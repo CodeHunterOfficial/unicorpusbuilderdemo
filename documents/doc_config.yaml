@@ -1,0 +1,112 @@
+# Конфигурация парсера документов
+version: "1.0"
+description: "Universal document parser configuration"
+
+# Поддерживаемые расширения файлов
+supported_extensions:
+  text:
+    extensions: [".txt", ".csv", ".tsv", ".md", ".rst", ".log", ".json", ".xml", ".html", ".htm", ".yaml", ".yml", ".ini", ".cfg", ".py", ".js", ".css", ".sql"]
+    type: "text"
+    
+  pdf:
+    extensions: [".pdf"]
+    type: "pdf"
+    
+  word:
+    extensions: [".docx", ".doc", ".odt", ".rtf"]
+    type: "docx"
+    
+  spreadsheet:
+    extensions: [".xlsx", ".xls", ".ods"]
+    type: "xlsx"
+    
+  presentation:
+    extensions: [".pptx", ".ppt", ".odp"]
+    type: "pptx"
+    
+  ebook:
+    extensions: [".epub", ".mobi", ".fb2", ".azw", ".azw3"]
+    type: "ebook"
+    
+  image_ocr:
+    extensions: [".png", ".jpg", ".jpeg", ".tiff", ".tif", ".bmp", ".gif", ".webp"]
+    type: "image"
+    
+  archive:
+    extensions: [".zip", ".rar", ".7z", ".tar", ".gz", ".bz2"]
+    type: "archive"
+
+# Настройки извлечения метаданных из имени файла
+filename_parsing:
+  # Разделители для извлечения автора и названия (в порядке приоритета)
+  separators: ["_", " - ", "-"]
+  # Правило: первый элемент до разделителя = автор, остальное = название
+  author_first: true
+
+# Настройки извлечения рубрик из структуры папок
+rubric_parsing:
+  # Уровень вложенности для определения рубрики (0 = имя папки, в которой лежит файл)
+  depth: 0
+  # Игнорировать корневую папку
+  ignore_root: true
+
+# Настройки чтения текстовых файлов
+text_reading:
+  # Кодировки для автоопределения (в порядке приоритета)
+  encodings: ["utf-8", "utf-8-sig", "windows-1251", "cp1251", "koi8-r", "latin-1", "iso-8859-1", "cp866", "maccyrillic"]
+
+# Настройки OCR
+ocr:
+  # Языки для распознавания (Tesseract)
+  languages: "rus+eng+tat+ara"
+  # Минимальный размер изображения для OCR (пиксели)
+  min_width: 100
+  min_height: 100
+
+# Настройки обработки
+processing:
+  # Максимальный размер файла в МБ
+  max_file_size_mb: 100
+  # Минимальная длина текста для сохранения
+  min_text_length: 100
+  # Пропускать файлы без текста
+  skip_empty: true
+  # Обрабатывать архивы рекурсивно
+  recursive_archives: true
+  # Максимальная глубина рекурсии для архивов
+  max_archive_depth: 3
+
+# Настройки вывода
+output:
+  # Директория для выходных файлов
+  directory: "documents_jsonl"
+  # Формат имени выходного файла (используется timestamp)
+  filename_template: "documents_{timestamp}.jsonl"
+  # Сохранять также общий файл со всеми документами
+  save_all: true
+
+# Настройки очистки текста
+text_cleaning:
+  # Удалять лишние пробелы и переносы строк
+  normalize_whitespace: true
+  # Минимальная длина строки для сохранения
+  min_line_length: 20
+  # Удалять строки, состоящие только из цифр
+  remove_numeric_only: false
+  # Удалять HTML-теги
+  strip_html: true
+
+# Языковые настройки
+language:
+  # Автоопределение языка
+  auto_detect: true
+  # Язык по умолчанию (если не удалось определить)
+  default: "unknown"
+
+# Метаданные по умолчанию
+defaults:
+  author: null
+  category: null
+  language: null
+  site: "local_documents"
+  source_type: "document"

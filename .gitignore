@@ -1,0 +1,4 @@
+social_jsonl/
+output/
+.venv
+*/__pycache__/

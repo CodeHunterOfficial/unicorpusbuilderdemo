@@ -1,0 +1,29 @@
+telegram:
+  api_id: 24707761
+  api_hash: "cd2d2b5118bfee0bdf275695231908b3"
+  channels:
+    - vatantat
+
+vk:
+  token: "vk1.a.FGMyRrakXABmda58CyCLK1TBlNYiQsD6W7o3JTYLAsOLK5kOq9z3Vf9DxEVX2WKYC4chcCgvZRIvbRkgfEO-rgpVqPEEGrLll2wnODuWqhG4FjHSaTTgzHgDB-SxqXp3jZFP8FDB18RLOLJm2ceN4VbqDZYbvTqIVmNC4FUyAPTwRa9kYGOS-quJjeX9Jgj4bolr9i1grCvFohk_taVfqw"
+  version: "5.199"
+  domains:
+    - allahtan
+    - public221151764
+    - ialgyz16
+    - sovet_kinesh
+    - public147862424
+
+rutube:
+  channels: []
+  videos:
+    - id: "fb6eadbddb4dd00cad0ea58b8b060b48"
+      max_comments: 500
+    - id: "63a01e97f8a311c37ea482bdcfc54ca4"
+      max_comments: 300
+    - id: "c07bd87575eae43e6e685ff9e8ed9357"
+  playlists:
+    - id: "1329269"
+      max_videos: 50
+
+output_dir: "social_jsonl"
