@@ -2,3 +2,15 @@ social_jsonl/
 output/
 .venv
 */__pycache__/
+wiki_output/
+corpus.jsonl
+corpus_***
+logs/
+__pycache__/
+streamlit_profiles.json
+documents_jsonl/
+output_*
+output2/
+output3/
+output4/
+show_project_structure.py

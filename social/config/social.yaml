@@ -1,0 +1,33 @@
+version: "1.0"
+description: "Modular social media configuration"
+
+includes:
+  - vk_tt.yaml
+  - vk_ba.yaml
+  - vk_tg.yaml
+  - vk_os.yaml
+  - vk_udm.yaml
+
+output_dir: "output/social"
+
+vk:
+  token: "your_token"
+
+telegram:
+  api_id: "your_api_id"
+  api_hash: "your_api_hash"
+  channels:
+    - name: vatantat
+      language: tt
+
+rutube:
+  channels: []
+  videos:
+    - id: "video_id_1"
+      max_comments: 500
+    - id: "video_id_2"
+      max_comments: 300
+    - id: "video_id_3"
+  playlists:
+    - id: "playlist_id_1"
+      max_videos: 50

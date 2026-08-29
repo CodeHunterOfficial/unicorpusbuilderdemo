@@ -1,10 +1,10 @@
-# engine\engine_v65_part1_core.py
+# pipeline/pipeline_core.py
 from __future__ import annotations
 import threading
 import sys
 import os
 
-# Добавляем корень проекта в sys.path
+# Add project root to sys.path
 sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
 from tqdm import tqdm
@@ -26,6 +26,10 @@ from bs4 import XMLParsedAsHTMLWarning
 warnings.filterwarnings("ignore", category=XMLParsedAsHTMLWarning)
 
 from config.loader import get_config, load_yaml_config, match_site
+from logger_setup import get_file_logger
+
+# Initialize file-only logger
+logger = get_file_logger("pipeline_core", "logs/pipeline_core.log")
 
 # =====================================================
 # Utilities
@@ -78,7 +82,7 @@ def sha256_hex(text: str, trunc: Optional[int] = 32) -> str:
 
 
 def apply_date_locale(date_str: str, locale_map: Optional[Dict[str, str]]) -> str:
-    """Replace Tajik / non‑standard month names with English equivalents."""
+    """Replace non-standard month names with English equivalents."""
     if not locale_map:
         return date_str
     for tg, en in locale_map.items():
@@ -163,7 +167,7 @@ def uniq_keep_order(items: Iterable[str]) -> List[str]:
 
 @dataclass
 class PipelineEngine:
-    yaml_path: str = "/content/Universalconfig.yaml"
+    yaml_path: str = "config/universal.yaml"
     root_cfg: Dict[str, Any] = field(default_factory=dict)
     session_pool: threading.local = field(default_factory=threading.local, init=False)
 
@@ -207,10 +211,22 @@ class PipelineEngine:
         locale_name = site_cfg.get("date_locale")
         if not locale_name:
             return None
+        
+        # New modular path: config.languages.<lang>.date_locale
+        languages = self.root_cfg.get("languages", {})
+        if isinstance(languages, dict) and locale_name in languages:
+            lang_pkg = languages[locale_name]
+            if isinstance(lang_pkg, dict):
+                return lang_pkg.get("date_locale")
+        
+        # Fallback: old monolithic path reusable_strategies.date_locale
         reusable = self.root_cfg.get("reusable_strategies", {})
         date_locales = reusable.get("date_locale", {})
         if isinstance(date_locales, dict):
-            return date_locales.get(locale_name)
+            result = date_locales.get(locale_name)
+            if result:
+                return result
+        
         return None
 
     # -------------------------------------------------
@@ -277,6 +293,31 @@ class PipelineEngine:
             raise last_exc
         raise RuntimeError(f"Failed to fetch URL: {url}")
 
+    def fetch_api_json(self, url: str, site_cfg: Dict[str, Any]) -> Dict[str, Any]:
+        """Execute GET request to API and return JSON."""
+        api_cfg = site_cfg.get('api_source', {})
+        timeout = api_cfg.get('timeout', self.request_cfg().get('timeout', 30))
+        retries = api_cfg.get('retries', self.request_cfg().get('retries', 3))
+        backoff_base = self.request_cfg().get('backoff_base', 1.6)
+        
+        sess = self._session()
+        headers, cookies = self._build_headers_and_cookies(url)
+        # Add API-specific headers if specified in config
+        extra_headers = api_cfg.get('headers', {})
+        headers.update(extra_headers)
+        
+        for attempt in range(retries):
+            try:
+                r = sess.get(url, headers=headers, cookies=cookies,
+                            timeout=timeout, verify=site_cfg.get('verify_ssl', True))
+                r.raise_for_status()
+                return r.json()
+            except Exception as e:
+                if attempt == retries - 1:
+                    raise
+                time.sleep(backoff_base ** attempt + random.uniform(0.1, 0.5))
+        return {}
+
     def can_fetch_robots(self, url: str) -> bool:
         if not bool(self.global_cfg().get("respect_robots", False)):
             return True
@@ -297,24 +338,24 @@ class PipelineEngine:
     # -------------------------------------------------
 
     def _safe_select(self, soup, css_selector: str) -> List[Tag]:
-        """Безопасный select с поддержкой :contains() для BeautifulSoup."""
+        """Safe select with :contains() support for BeautifulSoup."""
         if ':contains(' in css_selector:
-            # Извлекаем текст для поиска
+            # Extract text to search for
             match = re.search(r":contains\('([^']*)'\)", css_selector)
             if not match:
                 return []
             text = match.group(1)
-            # Убираем :contains() и всё что после, оставляя чистый CSS
+            # Remove :contains() and everything after, leaving clean CSS
             clean_selector = re.sub(r":contains\('[^']*'\)", '', css_selector).strip()
             if clean_selector:
                 try:
                     elements = soup.select(clean_selector)
                 except Exception:
                     elements = []
-                # Фильтруем по тексту
+                # Filter by text
                 return [el for el in elements if isinstance(el, Tag) and text in el.get_text()]
             else:
-                # Ищем все теги с нужным текстом
+                # Find all tags with the needed text
                 return [el for el in soup.find_all(True) if isinstance(el, Tag) and text in el.get_text()]
         else:
             try:
@@ -355,7 +396,7 @@ class PipelineEngine:
         cards = 0
         for sel in site_cfg.get("card_selectors", []):
             try:
-                cards += len(self._safe_select(soup, sel))  # используем безопасный select
+                cards += len(self._safe_select(soup, sel))
             except Exception:
                 pass
         if cards >= 3:
@@ -395,7 +436,7 @@ class PipelineEngine:
 
         for sel in site_cfg.get("pagination_selectors", []):
             try:
-                for el in self._safe_select(soup, sel):  # заменено на безопасный select
+                for el in self._safe_select(soup, sel):
                     href = el.get("href")
                     if href:
                         full = abs_url(current_url, href)
@@ -404,8 +445,8 @@ class PipelineEngine:
             except Exception:
                 pass
 
-        # Additional text‑based detection
-        next_texts = ["Следующая", "Киләсе", "Далее", "Next", "→", ">"]
+        # Additional text-based detection
+        next_texts = ["Next", "→", ">"]
         for a in soup.find_all("a", href=True):
             txt = clean_text(a.get_text(" ", strip=True))
             if txt and any(nt.lower() in txt.lower() for nt in next_texts):
@@ -413,7 +454,7 @@ class PipelineEngine:
                 if full:
                     return full
 
-        # Query‑parameter based pagination
+        # Query-parameter based pagination
         parsed = urlparse(current_url)
         qs = parse_qs(parsed.query)
 
@@ -433,7 +474,7 @@ class PipelineEngine:
             except Exception:
                 pass
 
-        # Path‑based pagination
+        # Path-based pagination
         m = re.search(r"/page/(\d+)", parsed.path)
         if m:
             cur = int(m.group(1))
@@ -441,7 +482,7 @@ class PipelineEngine:
             return urlunparse(parsed._replace(path=new_path))
 
 
-        # Если в URL ещё нет параметра p или page, ищем любую ссылку с ?p= на странице
+        # If URL doesn't have p or page param yet, look for any link with ?p= on the page
         parsed = urlparse(current_url)
         qs = parse_qs(parsed.query)
         if "p" not in qs and "page" not in qs:
@@ -465,7 +506,7 @@ class PipelineEngine:
         seen: Set[str] = set()
         for sel in site_cfg.get("rubric_selectors", []):
             try:
-                for a in self._safe_select(soup, sel):  # используем безопасный select
+                for a in self._safe_select(soup, sel):
                     href = a.get("href") if isinstance(a, Tag) else None
                     full = abs_url(base_url, href)
                     if not full:
@@ -558,25 +599,70 @@ class PipelineEngine:
             candidates.extend(self._rubrics_nuxt_state(base_url, html, site_cfg))
         return uniq_keep_order(candidates)
 
+    def _extract_api_items(self, payload: dict, site_cfg: dict) -> list:
+        """Parameterized extraction of news list from API JSON response."""
+        api_cfg = site_cfg['api_source']
+        items_path = api_cfg.get('items_path', 'data')
+        
+        # Find the container with items
+        container = payload
+        for part in items_path.split('.'):
+            if isinstance(container, dict):
+                container = container.get(part, [])
+            else:
+                container = []
+        if not isinstance(container, list):
+            return []
+        
+        fm = api_cfg.get('field_map', {})
+        nested = api_cfg.get('nested_extraction', {})
+        url_template = fm.get('url_template')
+        site_url = api_cfg.get('site_url', '')
+        
+        items = []
+        for obj in container:
+            item = {}
+            item['id'] = self._get_nested_value(obj, fm.get('id'))
+            item['title'] = self._get_nested_value(obj, fm.get('title'))
+            
+            # Date: try multiple fields
+            date_val = None
+            for date_field in ensure_list(fm.get('date', [])):
+                date_val = self._get_nested_value(obj, date_field)
+                if date_val:
+                    break
+            item['date'] = date_val
+            
+            item['content_html'] = self._get_nested_value(obj, fm.get('content_html'))
+            
+            # Generate article URL
+            if url_template:
+                item['url'] = url_template.format(site_url=site_url, id=item.get('id'))
+            else:
+                item['url'] = None
+            
+            # Nested lists (images, categories, cities)
+            for key, rule in nested.items():
+                path = rule.get('path')
+                sub_key = rule.get('key')
+                sub_container = self._get_nested_value(obj, path) or []
+                values = []
+                for sub in ensure_list(sub_container):
+                    val = self._get_nested_value(sub, sub_key) if sub_key else sub
+                    if val:
+                        values.append(val)
+                item[key] = values
+            
+            # Keep raw data
+            item['raw'] = obj
+            items.append(item)
+        
+        return items
 
     def collect_rubrics(self, base_url: str, context_rubrics: Optional[Iterable[str]] = None) -> List[str]:
         """
-        Универсальный сбор рубрик (категорий/разделов) для любого сайта из конфига.
-
-        Логика:
-        1. Если переданы context_rubrics – сразу возвращаем их.
-        2. Загружаем главную страницу.
-        3. Перебираем стратегии сбора, заданные в профиле сайта (rubric_strategy)
-          или в глобальных rubric_strategies_order.
-        4. Для menu_scraping:
-          - Сначала используем точные селекторы из site_cfg (rubric_selectors).
-          - Если найдено < 3 рубрик, включаем автоматический поиск по всем
-            типичным навигационным контейнерам (nav, header, ul.menu, …).
-        5. Остальные стратегии (pattern_fallback, archive_generation, nuxt_state_parsing,
-          auto_detect_multi) работают как обычно.
-        6. Фильтрация: удаляем внешние домены, дубликаты, шумные URL.
-        """
-        # --- 1. Внешние рубрики (контекст) ---
+        Universal rubric (category/section) collection for any site from config.
+        """               
         if context_rubrics:
             out: List[str] = []
             for r in context_rubrics:
@@ -586,11 +672,13 @@ class PipelineEngine:
             return uniq_keep_order(out)
 
         site_cfg = self.site_cfg(base_url)
+        if site_cfg.get('api_source', {}).get('enabled'):
+            return []          
         strategies = site_cfg.get("rubric_strategy") or self.global_cfg().get(
             "rubric_strategies_order"
         ) or ["menu_scraping"]
 
-        # --- 2. Загрузка главной страницы ---
+        # Load main page
         try:
             html = self.fetch_html(base_url)
         except Exception:
@@ -599,10 +687,10 @@ class PipelineEngine:
 
         all_rubrics: List[str] = []
 
-        # --- 3. Обработка стратегий ---
+        # Process strategies
         for strat in strategies:
             if strat == "menu_scraping":
-                # Точные селекторы из профиля сайта
+                # Exact selectors from site profile
                 found_any = False
                 for sel in site_cfg.get("rubric_selectors", []):
                     try:
@@ -615,9 +703,9 @@ class PipelineEngine:
                     except Exception:
                         pass
 
-                # Если точных селекторов не хватило (менее 3), включаем эвристики
+                # If exact selectors weren't enough (< 3), enable heuristics
                 if not found_any or len(set(all_rubrics)) < 3:
-                    # Обходим все распространённые навигационные блоки
+                    # Traverse all common navigation blocks
                     for container_sel in [
                         "nav", "header", ".menu", ".nav", ".navigation",
                         "ul.menu", "ul.nav", "div.nav", "div.menu",
@@ -647,10 +735,10 @@ class PipelineEngine:
                 all_rubrics.extend(self._rubrics_auto_detect_multi(base_url, soup, html, site_cfg))
 
             elif strat == "context_passed":
-                # уже обработано выше
+                # already handled above
                 continue
 
-        # --- 4. Очистка: домены, дубликаты, шум ---
+        # Cleanup: domains, duplicates, noise
         same_domain_only = self.domain_only()
         uniq: List[str] = []
         seen: Set[str] = set()
@@ -665,13 +753,15 @@ class PipelineEngine:
                 seen.add(u)
                 uniq.append(u)
 
-        # --- 5. Отладочный вывод (можно оставить или закомментировать) ---
-        print(f"Найдено рубрик: {len(uniq)}")
-        for r in uniq:
-            print(r)
+        # Debug output
+        logger.info(f"Collected {len(uniq)} rubrics for {base_url}")
+        print(f"[RUBRICS] Found: {len(uniq)}")
+        for r in uniq[:10]:
+            print(f"  {r}")
+        if len(uniq) > 10:
+            print(f"  ... and {len(uniq)-10} more")
 
         return uniq
-
 
     # -------------------------------------------------
     # Candidate discovery
@@ -682,7 +772,7 @@ class PipelineEngine:
         title = None
         for sel in site_cfg.get("title_selectors", []):
             try:
-                el = self._safe_select_one(soup, sel)  # используем безопасный select_one
+                el = self._safe_select_one(soup, sel)
             except Exception:
                 el = None
             if el:
@@ -740,7 +830,7 @@ class PipelineEngine:
         exclude_classes = site_cfg.get("card_exclude_classes", [])
 
         for sel in site_cfg.get("card_selectors", []):
-            for card in self._safe_select(soup, sel):  # используем безопасный select
+            for card in self._safe_select(soup, sel):
                 if not isinstance(card, Tag):
                     continue
                 try:
@@ -750,7 +840,7 @@ class PipelineEngine:
                     url = None
                     link_node = None
                     for link_sel in site_cfg.get("article_link_selectors", []):
-                        link_node = self._safe_select_one(card, link_sel)  # заменено на безопасный select_one
+                        link_node = self._safe_select_one(card, link_sel)
                         if link_node and link_node.get("href"):
                             url = abs_url(page_url, link_node.get("href"))
                             if url:
@@ -804,7 +894,7 @@ class PipelineEngine:
                     raw_time = None
                     for node in card.find_all(["time", "span", "a"]):
                         txt = clean_text(node.get_text(" ", strip=True))
-                        if re.search(r"\b\d{1,2}:\d{2}\b", txt) or re.search(r"\d{1,2}\s+[А-Яа-яЁёA-Za-z]+\s+\d{4}", txt):
+                        if re.search(r"\b\d{1,2}:\d{2}\b", txt) or re.search(r"\d{1,2}\s+[A-Za-z]+\s+\d{4}", txt):
                             raw_time = txt
                             break
 
@@ -824,8 +914,7 @@ class PipelineEngine:
                     }
                     items.append(item)
                 except Exception as e:
-                    # Логируем ошибку и продолжаем со следующей карточкой
-                    print(f"Ошибка обработки карточки: {e}")
+                    logger.error(f"Error processing card: {e}")
                     continue
 
         # Anchors fallback
@@ -877,6 +966,12 @@ class PipelineEngine:
         start_url: str,
         context_rubrics: Optional[Iterable[str]] = None,
     ) -> Dict[str, Dict[str, Any]]:
+        site_cfg_main = self.site_cfg(start_url)
+        if site_cfg_main.get('api_source', {}).get('enabled'):
+            return self.detect_page_candidates_api(
+                start_url, site_cfg_main
+            )
+        
         limits = self.limits_cfg()
         max_pages = int(limits.get("max_pages", 250))
         max_depth = int(limits.get("max_depth", 3))
@@ -897,10 +992,12 @@ class PipelineEngine:
         for r in rubric_links:
             queue.append((r, 1))
 
+        logger.info(f"Starting crawl: {start_url} (max_pages={max_pages}, max_depth={max_depth}, max_items={max_items})")
+
         pbar = tqdm(
             total=max_pages,
-            desc="🌐 Обход страниц",
-            unit="стр",
+            desc="[CRAWL] Page traversal",
+            unit="page",
             dynamic_ncols=True,
         )
 
@@ -922,18 +1019,18 @@ class PipelineEngine:
             visited_pages.add(current_url)
             pbar.update(1)
             pbar.set_postfix_str(
-                f"кандидатов: {len(discovered)}, глубина: {depth}"
+                f"candidates: {len(discovered)}, depth: {depth}"
             )
 
             site_cfg = self.site_cfg(current_url)
 
-            # Пытаемся загрузить HTML
+            # Try to load HTML
             try:
                 html = self.fetch_html(current_url)
             except Exception:
                 continue
 
-            # Безопасно создаём суп — если страница невалидна или бинарна, пропускаем её
+            # Safely create soup – skip page if invalid or binary
             try:
                 soup = BeautifulSoup(html, "html.parser")
             except Exception:
@@ -953,7 +1050,7 @@ class PipelineEngine:
                     if u and u not in discovered:
                         discovered[u] = item
 
-            # Every visible article‑like link
+            # Every visible article-like link
             for a in soup.find_all("a", href=True):
                 href = abs_url(current_url, a.get("href"))
                 if not href:
@@ -1023,6 +1120,60 @@ class PipelineEngine:
             time.sleep(delay)
 
         pbar.close()
+        logger.info(f"Crawl finished: {len(discovered)} candidates found")
+        return discovered
+
+    def detect_page_candidates_api(
+        self,
+        start_url: str,
+        site_cfg: Dict[str, Any],
+        max_items: int = None
+    ) -> Dict[str, Dict[str, Any]]:
+        
+        api_cfg = site_cfg['api_source']
+        last_page = self._get_api_last_page(site_cfg)
+        delay = api_cfg.get('delay', 0.15)
+        discovered = {}
+        
+        max_items = max_items or self.limits_cfg().get('max_items', 10000)
+        logger.info(f"Starting API crawl: last_page={last_page}, max_items={max_items}")
+        
+        for page in range(1, last_page + 1):
+            if len(discovered) >= max_items:
+                break
+            url = self._make_api_page_url(site_cfg, page)
+            try:
+                data = self.fetch_api_json(url, site_cfg)
+                items = self._extract_api_items(data, site_cfg)
+                
+                for item in items:
+                    article_url = item.get('url')
+                    if not article_url:
+                        continue
+                    # Convert to candidate format
+                    discovered[article_url] = {
+                        'url': article_url,
+                        'title': item.get('title'),
+                        'content': item.get('content_html', ''),
+                        'date': item.get('date'),
+                        'author': site_cfg.get('default_author'),
+                        'category': ', '.join(item.get('categories', [])),
+                        'images': item.get('images', []),
+                        'raw': item.get('raw'),
+                        'scraped_at': now_iso(),
+                        'source_page': url,
+                        'page_type': 'api_candidate',
+                    }
+                    if len(discovered) >= max_items:
+                        break
+            except Exception as e:
+                logger.error(f"Error on page {page}: {e}")
+                print(f"[ERROR] Page {page}: {e}")
+                continue
+            
+            time.sleep(delay)
+        
+        logger.info(f"API crawl finished: {len(discovered)} candidates")
         return discovered
     
     # -------------------------------------------------
@@ -1041,6 +1192,72 @@ class PipelineEngine:
             "domain": get_domain(start_url),
         }
 
+    def _get_nested_value(self, obj: Any, path_str: str) -> Any:
+        """Extract value by dot-separated path: 'news_type.name'."""
+        if not obj or not path_str:
+            return None
+        parts = path_str.split('.')
+        current = obj
+        for p in parts:
+            if isinstance(current, dict):
+                current = current.get(p)
+            else:
+                return None
+        return current
+
+    def _get_api_last_page(self, site_cfg: Dict[str, Any]) -> int:
+        api_cfg = site_cfg['api_source']
+
+        # Simple fixed limit
+        if 'fixed_last_page' in api_cfg:
+            return int(api_cfg['fixed_last_page'])
+
+        # Flexible configuration via last_page_detection
+        detection = api_cfg.get('last_page_detection', {})
+        mode = detection.get('mode', 'fixed')
+        if mode == 'fixed':
+            return detection.get('value', 1)
+
+        # Auto-detection by binary search
+        start = detection.get('initial_page', 1)
+        max_probe = detection.get('max_probe', 1000000)
+
+        def nonempty(page):
+            try:
+                url = self._make_api_page_url(site_cfg, page)
+                data = self.fetch_api_json(url, site_cfg)
+                items = self._extract_api_items(data, site_cfg)
+                return len(items) > 0
+            except Exception:
+                return False
+
+        if not nonempty(start):
+            return start - 1 if start > 1 else 0
+
+        lo = start
+        hi = start * 2
+        while hi <= max_probe and nonempty(hi):
+            lo = hi
+            hi *= 2
+            time.sleep(api_cfg.get('delay', 0.1))
+
+        left, right = lo, hi
+        while left + 1 < right:
+            mid = (left + right) // 2
+            if nonempty(mid):
+                left = mid
+            else:
+                right = mid
+            time.sleep(api_cfg.get('delay', 0.1))
+        return left
+
+    def _make_api_page_url(self, site_cfg: Dict[str, Any], page: int) -> str:
+        api_cfg = site_cfg['api_source']
+        base = api_cfg['base_api_url'].rstrip('/')
+        endpoint = api_cfg['list_endpoint'].format(page=page)
+        return base + endpoint if endpoint.startswith('/') else base + '/' + endpoint
+
+
 # =====================================================
 # Smoke test
 # =====================================================
@@ -1049,17 +1266,16 @@ if __name__ == "__main__":
     import sys
     import json
 
-    # Значения по умолчанию
-    yaml_path = "Universalconfig.yaml"
-    start = "https://www.ozodi.org/"
+    # Default values
+    yaml_path = "config/universal.yaml"
+    start = "https://khovar.tj"
 
-    # Переопределяем из аргументов, если переданы
+    # Override from arguments if passed
     if len(sys.argv) >= 2:
         yaml_path = sys.argv[1]
     if len(sys.argv) >= 3:
         start = sys.argv[2]
 
+    logger.info(f"Smoke test: config={yaml_path}, url={start}")
     engine = PipelineEngine(yaml_path=yaml_path)
     print(json.dumps(engine.stats(start), ensure_ascii=False, indent=2))
-    
-#(.venv) PS D:\Science\TajikPersianNLP\scraper_project> python engine\engine_v65_part1_core.py  Universalconfig.yaml https://www.ozodi.org/

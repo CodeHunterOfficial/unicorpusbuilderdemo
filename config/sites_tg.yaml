@@ -1,0 +1,826 @@
+# ============================================================
+# TAJIK SITES — 10 news portals in Tajik language
+# ============================================================
+
+sites:
+  # ============================================================
+  # sssr.tj — WordPress-based news
+  # ============================================================
+  sssr:
+    match:
+      - "sssr.tj"
+    default_language: "tg"
+    noise_language: ["common", "tg"]
+    rubric_strategy:
+      - "menu_scraping"
+    author_strategy:
+      - "meta_tag"
+      - "json_ld_graph"
+      - "regex_in_content"
+      - "default_fallback"
+    rubric_selectors:
+      - "ul#menu-primary-menu a[href*='/category/']"
+      - "nav a[href*='/category/']"
+      - "a[href*='/category/']"
+      - "a[href*='/rubric/']"
+      - "a[href*='/2021/']"
+      - "a[href*='/2022/']"
+      - "a[href*='/2023/']"
+      - "a[href*='/2024/']"
+      - "a[href*='/2025/']"
+      - "a[href*='/2026/']"
+    card_selectors:
+      - "article.post"
+    article_link_selectors:
+      - "h2.entry-title a"
+      - "article.post a[href]"
+    pagination_selectors:
+      - "a.next.page-numbers"
+      - "ul.page-numbers a"
+      - "a.page-numbers:not(.prev):not(.next)"
+      - "a:contains('Next')"
+      - "a.next"
+      - "a[rel='next']"
+      - "a[href*='/page/']"
+      - "a[href*='page=']"
+    title_selectors:
+      - "h1.entry-title"
+      - "h1"
+      - "title"
+      - 'meta[property="og:title"]'
+    date_selectors:
+      - 'meta[property="article:published_time"]'
+      - 'meta[itemprop="datePublished"]'
+      - ".post-meta .meta-date a time"
+      - ".post-meta .meta-date"
+      - "time[datetime]"
+    author_selectors:
+      - 'meta[name="author"]'
+      - 'meta[property="article:author"]'
+      - ".post-meta .author vcard a"
+      - ".post-meta .author"
+    category_selectors:
+      - 'meta[property="article:section"]'
+      - ".cat-links a"
+      - ".breadcrumb a"
+    content_selectors:
+      - "div.entry-content"
+      - "article"
+    remove_selectors:
+      - ".share"
+      - ".social"
+      - ".banner"
+      - "script"
+      - "style"
+      - "noscript"
+    article_url_filters: []
+    article_url_excludes:
+      - "/category/"
+      - "/rubric/"
+      - "/tag/"
+      - "/page/"
+
+  # ============================================================
+  # ozodi.org — Tajik service of RFE/RL
+  # ============================================================
+  ozodi:
+    match:
+      - "ozodi.org"
+    amp_mode: "prefix"
+    default_language: "tg"
+    noise_language: ["common", "tg"]
+    rubric_strategy:
+      - "menu_scraping"
+    author_strategy:
+      - "meta_tag"
+      - "json_ld_graph"
+      - "class_selector"
+      - "default_fallback"
+    rubric_selectors:
+      - "ul.main-nav__list a[href]"
+      - "li.accordeon__item a[href]"
+    card_selectors:
+      - "ul.archive-list li"
+    article_link_selectors:
+      - "a[href*='/a/']"
+    pagination_selectors:
+      - "a.btn.link-showMore"
+    title_selectors:
+      - "h1"
+      - 'meta[property="og:title"]'
+      - "title"
+    date_selectors:
+      - 'meta[property="article:published_time"]'
+      - 'meta[name="pubdate"]'
+      - 'meta[itemprop="datePublished"]'
+      - "time[datetime]"
+    author_selectors:
+      - 'meta[name="Author"]'
+      - ".c-author a"
+      - ".media-block__title--author a"
+    category_selectors:
+      - 'meta[property="article:section"]'
+      - ".category"
+      - ".tag"
+    content_selectors:
+      - ".article-body"
+      - "article"
+      - ".content"
+      - "main"
+    remove_selectors:
+      - ".banner"
+      - ".share"
+      - ".social"
+      - ".widget"
+      - ".sidebar"
+    article_url_filters:
+      - "/a/"
+    article_url_excludes: []
+
+  # ============================================================
+  # asiaplustj.info — major Tajik news portal
+  # ============================================================
+  asiaplustj:
+    match:
+      - "asiaplustj.info"
+      - "asiaplustj"
+    default_language: "tg"
+    noise_language: ["common", "tg"]
+    rubric_strategy:
+      - "menu_scraping"
+      - "pattern_fallback"
+    author_strategy:
+      - "meta_tag"
+      - "class_selector"
+      - "json_ld_graph"
+      - "regex_in_content"
+      - "default_fallback"
+    rubric_selectors:
+      - "ul.nav.nav-justified a[href*='/tj/rubrics/']"
+      - "ul.nav.nav-justified a[href*='/tj/news/']"
+      - "ul.nav.nav-justified ul.dropdown-menu a[href*='/tj/rubrics/']"
+      - "ul.nav.nav-justified ul.dropdown-menu a[href*='/tj/news/']"
+      - "nav a[href*='/tj/rubrics/']"
+      - "nav a[href*='/tj/news/']"
+    card_selectors:
+      - "div.rubric"
+      - "article"
+      - "div.news-item"
+      - "li"
+    article_link_selectors:
+      - "a[href]"
+    pagination_selectors:
+      - "ul.pagination a[href]"
+      - "a.next"
+      - "a[rel='next']"
+      - "a[href*='page=']"
+      - "a[href*='/page/']"
+    title_selectors:
+      - "h1"
+      - "title"
+      - 'meta[property="og:title"]'
+    date_selectors:
+      - "div.article-info span"
+      - 'meta[property="article:published_time"]'
+      - 'meta[name="pubdate"]'
+      - 'meta[name="published_date"]'
+      - 'meta[itemprop="datePublished"]'
+      - "time[datetime]"
+    author_selectors:
+      - 'meta[name="author"]'
+      - 'meta[property="article:author"]'
+      - ".article-author"
+    category_selectors:
+      - 'meta[property="article:section"]'
+      - ".breadcrumb a"
+    content_selectors:
+      - "article"
+      - ".article-body"
+      - ".content"
+      - "main"
+    remove_selectors:
+      - ".banner"
+      - ".share"
+      - ".social"
+      - ".widget"
+      - ".sidebar"
+    article_url_filters:
+      - "/news/"
+      - "/ru/news/"
+      - "/tj/news/"
+    article_url_excludes:
+      - "/tag/"
+      - "/category/"
+    category_strategy:
+      - "url_path_parsing"
+      - "meta_tag"
+
+  # ============================================================
+  # khovar.tj — national information agency of Tajikistan
+  # ============================================================
+  khovar:
+    default_author: "Khovar News Agency"
+    start_url: "https://khovar.tj/"
+    match:
+      - "khovar.tj"
+    default_language: "tg"
+    noise_language: ["common", "tg"]
+    rubric_strategy:
+      - "menu_scraping"
+      - "pattern_fallback"
+    author_strategy:
+      - "meta_tag"
+      - "class_selector"
+      - "style_based"
+      - "json_ld_graph"
+      - "regex_in_content"
+      - "default_fallback"
+    rubric_selectors:
+      - "div.main-menu ul.the-menu a[href]"
+      - "nav a[href]"
+      - "header a[href]"
+      - "a[href*='/news/']"
+      - "a[href*='/tj/']"
+    card_selectors:
+      - "div.article-big"
+      - "article"
+      - "div.post"
+    article_link_selectors:
+      - "h2 a"
+      - "a[href]"
+    pagination_selectors:
+      - "div.pagination a.next"
+      - "div.pagination a:contains('Next page')"
+      - "a.next"
+      - "a[rel='next']"
+      - "a[href*='/page/']"
+    title_selectors:
+      - "h1"
+      - "title"
+      - 'meta[property="og:title"]'
+    date_selectors:
+      - "span.meta"
+      - 'meta[property="article:published_time"]'
+      - 'meta[itemprop="datePublished"]'
+      - "time[datetime]"
+    author_selectors:
+      - 'p[style*="text-align: right"] strong'
+      - 'p[style*="text-align:right"] strong'
+      - 'meta[name="author"]'
+      - 'meta[property="article:author"]'
+      - ".author"
+      - ".article-author"
+    category_selectors:
+      - 'meta[property="article:section"]'
+      - ".breadcrumb a"
+    content_selectors:
+      - "div.shortcode-content"
+      - "div.column9"
+      - "article"
+      - ".content"
+      - ".entry-content"
+      - "main"
+    remove_selectors:
+      - ".banner"
+      - ".share"
+      - ".social"
+      - ".widget"
+    article_url_filters: []
+    article_url_excludes:
+      - "/category/"
+      - "/tag/"
+
+  # ============================================================
+  # oila.tj — family / lifestyle portal
+  # ============================================================
+  oila:
+    match:
+      - "oila.tj"
+      - "oila"
+    default_language: "tg"
+    noise_language: ["common", "tg"]
+    rubric_strategy:
+      - "menu_scraping"
+      - "pattern_fallback"
+    author_strategy:
+      - "meta_tag"
+      - "json_ld_graph"
+      - "regex_in_content"
+      - "default_fallback"
+    rubric_selectors:
+      - "ul.menu-desk a[href*='/category/']"
+      - "ul.menu-desk a[href]"
+      - "nav a[href]"
+      - "header a[href]"
+      - "a[href*='/news/']"
+      - "a[href*='/category/']"
+    card_selectors:
+      - "div.article"
+    article_link_selectors:
+      - "a.article__title"
+    pagination_selectors:
+      - "span.active"
+      - "a.pagination__number"
+      - "a.pagination__arrow--next:not(.disabled)"
+      - "a.pagination__arrow--next"
+      - "div.pagination a"
+      - "a.next"
+      - "a[rel='next']"
+      - "a[href*='/page/']"
+      - "a[href*='page=']"
+    title_selectors:
+      - "div.title--article"
+      - 'meta[property="og:title"]'
+      - "h1"
+      - "title"
+    date_selectors:
+      - "div.date-widget__time"
+      - 'meta[property="article:published_time"]'
+      - 'meta[itemprop="datePublished"]'
+      - "time[datetime]"
+    author_selectors:
+      - "a.date-widget__author"
+      - 'meta[name="author"]'
+      - 'meta[property="article:author"]'
+    category_selectors:
+      - 'meta[property="article:section"]'
+      - ".breadcrumb a"
+    content_selectors:
+      - "article.page-article__wysiwyg"
+      - "div.entry-content"
+      - "article"
+      - ".content"
+      - "main"
+    remove_selectors:
+      - ".banner"
+      - ".share"
+      - ".social"
+      - ".widget"
+    article_url_filters:
+      - "/news/"
+    article_url_excludes:
+      - "/tag/"
+      - "/category/"
+      - "/page/"
+
+  # ============================================================
+  # jumhuriyat.tj — government newspaper
+  # ============================================================
+  jumhuriyat:
+    match:
+      - "jumhuriyat.tj"
+      - "jumhuriyat"
+    default_language: "tg"
+    noise_language: ["common", "tg"]
+    rubric_strategy:
+      - "menu_scraping"
+      - "pattern_fallback"
+    author_strategy:
+      - "meta_tag"
+      - "class_selector"
+      - "json_ld_graph"
+      - "regex_in_content"
+      - "default_fallback"
+    rubric_selectors:
+      - "nav.side-box.side-blue.mob-menu a[href]"
+      - "nav a[href*='/bahsho/']"
+      - "nav a[href*='/prezidenti-t/']"
+      - "nav a[href*='/uato/']"
+      - "nav a[href*='/alasao/']"
+    card_selectors:
+      - "div.news-item.clearfix"
+      - "div.news-item"
+    article_link_selectors:
+      - "a.news-item-title"
+      - "div.news-item a[href*='/bahsho/']"
+      - "div.news-item a[href*='/prezidenti-t/']"
+      - "div.news-item a[href*='/uato/']"
+      - "div.news-item a[href*='/alasao/']"
+    pagination_selectors:
+      - "div.pagi-nav.clearfix a[href*='/page/']"
+      - "div.pagi-nav a[href]"
+      - "a[href*='/page/']"
+      - "link[rel='next']"
+    title_selectors:
+      - "article.full h1"
+      - "h1"
+      - 'meta[property="og:title"]'
+      - "title"
+    date_selectors:
+      - "div.main-item-date.icon-l"
+      - 'meta[property="article:published_time"]'
+      - 'meta[itemprop="datePublished"]'
+      - "time[datetime]"
+    author_selectors:
+      - 'meta[name="author"]'
+      - 'meta[property="article:author"]'
+    category_selectors:
+      - 'meta[property="article:section"]'
+    category_strategy:
+      - "url_path_parsing"
+      - "meta_tag"
+    content_selectors:
+      - "div.full-text#full-text"
+      - "div.full-text"
+      - "article"
+      - ".content"
+      - "main"
+    remove_selectors:
+      - ".banner"
+      - ".share"
+      - ".social"
+      - ".widget"
+      - ".sidebar"
+    article_url_filters:
+      - "/bahsho/"
+      - "/prezidenti-t/"
+      - "/uato/"
+      - "/alasao/"
+    article_url_excludes:
+      - "/obuna/"
+      - "/pdf/"
+      - "/suratguzorish.html"
+      - "/oi-holii-kor"
+      - "/dar-borai-mo"
+      - "/page/"
+    date_locale: "tg"
+
+  # ============================================================
+  # omuzgor.tj — education / teacher portal
+  # ============================================================
+  omuzgor:
+    match:
+      - "omuzgor.tj"
+    default_language: "tg"
+    noise_language: ["common", "tg"]
+    rubric_strategy:
+      - "menu_scraping"
+      - "pattern_fallback"
+    author_strategy:
+      - "meta_tag"
+      - "class_selector"
+      - "json_ld_graph"
+      - "regex_in_content"
+      - "default_fallback"
+    rubric_selectors:
+      - "ul#main-menu a[href]"
+    card_selectors:
+      - "article"
+    article_link_selectors:
+      - "article a[href*='?p=']"
+      - "article a[href*='?page_id=']"
+      - "a[href*='?p=']"
+      - "a[href*='?page_id=']"
+    pagination_selectors:
+      - "a.next.page-numbers"
+      - "ul.page-numbers a"
+      - "a.page-numbers:not(.prev):not(.next)"
+      - "a:contains('Next')"
+      - "a.next"
+      - "a[rel='next']"
+      - "a[href*='paged=']"
+    title_selectors:
+      - "h1.entry-title"
+      - "title"
+    date_selectors:
+      - 'meta[property="article:published_time"]'
+      - 'meta[name="publication-date"]'
+    author_selectors:
+      - 'meta[name="author"]'
+      - ".entry-meta .author a"
+      - ".entry-meta .author"
+    category_selectors:
+      - 'meta[property="article:section"]'
+      - "a[rel='category tag']"
+    content_selectors:
+      - "div.entry-content"
+    remove_selectors:
+      - ".banner"
+      - ".social"
+      - ".share"
+      - ".widget"
+    article_url_filters:
+      - "?p="
+      - "?page_id="
+    article_url_excludes:
+      - "/page/"
+      - "/category/"
+      - "/tag/"
+
+  # ============================================================
+  # sadoimardum.tj — people's voice newspaper
+  # ============================================================
+  sadoimardum:
+    match:
+      - "sadoimardum.tj"
+    default_language: "tg"
+    noise_language: ["common", "tg"]
+    rubric_strategy:
+      - "menu_scraping"
+    author_strategy:
+      - "meta_tag"
+      - "json_ld_graph"
+      - "regex_in_content"
+      - "default_fallback"
+    rubric_selectors:
+      - "ul.nav__list a[href]"
+    card_selectors:
+      - "article.short"
+    article_link_selectors:
+      - "h2.short__title a"
+    pagination_selectors:
+      - "div.pagination__pages a"
+      - "a[href*='/page/']"
+      - "a[rel='next']"
+    title_selectors:
+      - "h1.short__title"
+      - "title"
+    date_selectors:
+      - "div.short__meta-item"
+      - 'meta[property="article:published_time"]'
+      - "time[datetime]"
+    author_selectors:
+      - 'meta[name="author"]'
+    category_selectors:
+      - 'meta[property="article:section"]'
+    content_selectors:
+      - "div.page__text.full-text"
+      - "div.page__text"
+      - "div.full-text"
+    remove_selectors:
+      - ".banner"
+      - ".social"
+      - ".share"
+      - ".widget"
+    article_url_filters: []
+    article_url_excludes:
+      - "/page/"
+    date_locale: "tg"
+
+  # ============================================================
+  # mit.tj — Ministry of Industry and Technology portal
+  # ============================================================
+  mit:
+    match:
+      - "mit.tj"
+      - "mit"
+    default_language: "tg"
+    noise_language: ["common", "tg"]
+    rubric_strategy:
+      - "menu_scraping"
+      - "pattern_fallback"
+    author_strategy:
+      - "meta_tag"
+      - "class_selector"
+      - "json_ld_graph"
+      - "regex_in_content"
+      - "default_fallback"
+    rubric_selectors:
+      - "a.elementor-item[href]"
+      - "nav a[href]"
+      - "header a[href]"
+      - "a[href*='/news/']"
+    card_selectors:
+      - "div.ue_post_blocks_box"
+      - "article"
+      - "div.news-item"
+    article_link_selectors:
+      - "div.ue_post_blocks_title a[href]"
+      - "a[href]"
+    pagination_selectors:
+      - "div.pagination a"
+      - "nav.navigation a"
+      - "a.next"
+      - "a[rel='next']"
+      - "a:contains('Next')"
+      - "a[href*='paged=']"
+      - "a[href*='page=']"
+    title_selectors:
+      - "h1.entry-title"
+      - "h1"
+      - "title"
+      - 'meta[property="og:title"]'
+    date_selectors:
+      - "span.published"
+      - 'meta[property="article:published_time"]'
+      - 'meta[itemprop="datePublished"]'
+      - "time[datetime]"
+    author_selectors:
+      - "span.author-name"
+      - 'meta[name="author"]'
+      - 'meta[property="article:author"]'
+      - ".author"
+    category_selectors:
+      - 'meta[property="article:section"]'
+      - ".breadcrumb a"
+    content_selectors:
+      - "div.entry-content"
+      - "article"
+      - ".content"
+    remove_selectors:
+      - ".banner"
+      - ".share"
+      - ".social"
+      - ".widget"
+    article_url_filters:
+      - "/news/"
+      - "/article/"
+    article_url_excludes:
+      - "/tag/"
+      - "/category/"
+      - "/page/"
+
+  # ============================================================
+  # mfa.tj — Ministry of Foreign Affairs
+  # ============================================================
+  mfa:
+    match:
+      - "mfa.tj"
+      - "www.mfa.tj"
+    default_language: "tg"
+    noise_language: ["common", "tg"]
+    verify_ssl: false
+    rubric_strategy:
+      - "menu_scraping"
+    author_strategy:
+      - "meta_tag"
+      - "json_ld_graph"
+      - "default_fallback"
+    rubric_selectors:
+      - "nav.yTopNav a[href]"
+    card_selectors:
+      - "a[href*='/main/view/']"
+    article_link_selectors:
+      - "a[href*='/main/view/']"
+    pagination_selectors:
+      - "ul.pagination li.next a"
+      - "ul.pagination a.page-link"
+      - "a[href*='page=']"
+    title_selectors:
+      - "h1"
+      - "title"
+    date_selectors:
+      - "span.date"
+      - 'meta[property="article:published_time"]'
+    author_selectors:
+      - 'meta[name="author"]'
+    category_selectors:
+      - ".breadcrumb a:last-child"
+      - ".breadcrumb a"
+      - 'meta[property="article:section"]'
+    category_strategy:
+      - "breadcrumb"
+      - "meta_tag"
+    content_selectors:
+      - "div.yContentView"
+      - "article"
+    remove_selectors:
+      - ".banner"
+      - ".share"
+      - ".social"
+    article_url_filters:
+      - "/main/view/"
+    article_url_excludes: []
+
+  # ============================================================
+  # president.tj — government newspaper
+  # ============================================================
+  president-tj:
+    match:
+      - "president.tj"
+    default_language: "tg"
+    noise_language: ["common", "tg"]
+    default_author: "Presidential Press Service"
+    api_source:
+      enabled: true
+      base_api_url: "https://controlpanel.president.tj"
+      site_url: "https://www.president.tj"
+      list_endpoint: "/api/event_search_by_group?event_type=news&page={page}&searchText=&lang_id=1"
+      fixed_last_page: 1211
+      items_path: "data"
+      field_map:
+        id: "id"
+        title: "title"
+        date: ["publish_date", "news_date", "date"]
+        content_html: "text"
+        url_template: "{site_url}/event/news/{id}"
+      nested_extraction:
+        images:
+          path: "news_flickr_image_relation"
+          key: "src"
+        categories:
+          path: "news_type_relation"
+          key: "news_type.name"
+        cities:
+          path: "city_relation"
+          key: "city.name"
+      delay: 0.15
+      headers:
+        User-Agent: "Mozilla/5.0 (compatible; Scraper/1.0)"
+        Accept: "application/json, text/plain, */*"
+        Accept-Language: "ru-RU,ru;q=0.9,en;q=0.8,tg;q=0.7"
+
+  # ============================================================
+  # tguk.tj — government newspaper
+  # ============================================================
+  tguk:
+    match:
+      - "tguk.tj"
+    default_language: "tg"
+    noise_language: ["common", "tg"]
+    rubric_strategy:
+      - "menu_scraping"
+    author_strategy:
+      - "meta_tag"
+      - "default_fallback"
+    rubric_selectors:
+      - "a[href*='/index.php/tj/habarho.html']"
+      - "a:contains('News')"
+    card_selectors:
+      - "div.itemContainer"
+    article_link_selectors:
+      - "a[href*='/item/']"
+    pagination_selectors:
+      - "a[href*='start=']"
+      - "div.k2Pagination a"
+      - "ul.pagination a"
+    title_selectors:
+      - 'meta[property="og:title"]'
+      - "h2.itemTitle"
+      - "h1"
+    date_selectors:
+      - "span.fa-calendar"
+      - 'meta[property="article:published_time"]'
+    author_selectors:
+      - 'meta[name="author"]'
+    category_selectors:
+      - "ul.breadcrumb li.active span"
+      - 'meta[property="article:section"]'
+    category_strategy:
+      - "breadcrumb"
+      - "meta_tag"
+    content_selectors:
+      - "div.itemFullText"
+    remove_selectors:
+      - ".banner"
+      - ".social"
+      - ".share"
+      - ".widget"
+    article_url_filters:
+      - "/item/"
+    article_url_excludes:
+      - "/tag/"
+      - "/category/"
+      - "/page/"
+
+  # ============================================================
+  # tajmedun.tj — University news portal (Bitrix)
+  # ============================================================
+  tajmedun:
+    match:
+      - "tajmedun.tj"
+    default_language: "tg"
+    noise_language: ["common", "tg"]
+    start_url: "https://tajmedun.tj/tj/akhbor/"
+    rubric_strategy:
+      - "menu_scraping"
+    rubric_selectors:
+      - "ul.nav-tabs a[href*='/tj/akhbor/']"
+      - "div.news-tabs a[href*='/tj/akhbor/']"
+      - "a[href*='/tj/akhbor/']"
+    card_selectors:
+      - "div.card-body h5.card-title"
+    article_link_selectors:
+      - "h5.card-title a"
+      - "div.card-body a[href]"
+    pagination_selectors:
+      - "a[href*='PAGEN_1=']"
+      - "link[rel='next']"
+    title_selectors:
+      - "div.card-header h4.text-title b"
+      - "h1"
+      - "title"
+    date_selectors:
+      - "div.card-text.h6 i.fa-calendar-o"
+      - 'meta[property="article:published_time"]'
+      - "time[datetime]"
+    author_selectors:
+      - 'meta[name="author"]'
+      - ".author"
+    category_selectors:
+      - "ol.breadcrumb li.breadcrumb-item:nth-last-child(2) a"
+      - 'meta[property="article:section"]'
+    content_selectors:
+      - "div.card-body.text-dark"
+      - "article"
+    remove_selectors:
+      - "div.card-text.h6"
+      - ".share"
+      - ".social"
+      - ".banner"
+      - "script"
+      - "style"
+    article_url_filters:
+      - "/tj/akhbor/"
+    article_url_excludes:
+      - "?PAGEN_1="

@@ -1,0 +1,158 @@
+# ============================================================
+# BASHKIR SITES — 2 news portals in Bashkir language
+# ============================================================
+
+sites:
+
+  # ============================================================
+  # yanshishma.com — Nuxt-based Bashkir news
+  # ============================================================
+  yanshishma:
+    match:
+      - "yanshishma.com"
+    default_language: "ba"
+    noise_language: ["common", "ba"]
+    rubric_strategy:
+      - "nuxt_state_parsing"
+      - "menu_scraping"
+      - "pattern_fallback"
+    author_strategy:
+      - "meta_tag"
+      - "json_ld_graph"
+      - "regex_in_content"
+      - "default_fallback"
+    rubric_selectors:
+      - "nav a[href]"
+      - "header a[href]"
+      - "a[href*='/articles/']"
+      - "a[href*='/category/']"
+      - "a[href*='/news/']"
+    card_selectors:
+      - "article"
+    article_link_selectors:
+      - "a[href*='/articles/']"
+      - "a[href]"
+    pagination_selectors:
+      - "a.btn.link-showMore"
+      - "a.load-more"
+      - "a.show-more"
+      - "a.pagination__next"
+      - "a:contains('Күберәк')"
+      - "a.next"
+      - "a[rel='next']"
+      - "a[href*='page=']"
+      - "a[href*='/page/']"
+    title_selectors:
+      - "h1"
+      - "title"
+      - 'meta[property="og:title"]'
+    date_selectors:
+      - 'script[type="application/ld+json"]'
+      - 'meta[name="published_at"]'
+      - 'meta[property="article:published_time"]'
+      - 'meta[itemprop="datePublished"]'
+      - "time[datetime]"
+    author_selectors:
+      - 'meta[name="author"]'
+      - 'meta[property="article:author"]'
+      - ".authors_3UWeo .item_1CuO-"
+      - ".material-author"
+    category_selectors:
+      - 'meta[property="article:section"]'
+      - ".breadcrumb a"
+    content_selectors:
+      - ".paragraph.serif-text"
+      - ".material-content"
+      - ".news-text"
+      - "[itemprop='articleBody']"
+      - ".field-item"
+      - ".post-content"
+      - "article"
+      - ".entry-content"
+      - ".content"
+      - "main"
+    remove_selectors:
+      - ".banner"
+      - ".social"
+      - ".share"
+      - ".widget"
+    article_url_filters:
+      - "/articles/"
+    article_url_excludes:
+      - "/galleries/"
+      - "/category/"
+      - "/tag/"
+
+  # ============================================================
+  # akbuzat-rb.ru — Nuxt-based Bashkir news
+  # ============================================================
+  akbuzat:
+    match:
+      - "akbuzat-rb.ru"
+    default_language: "ba"
+    noise_language: ["common", "ba"]
+    rubric_strategy:
+      - "nuxt_state_parsing"
+      - "pattern_fallback"
+    author_strategy:
+      - "meta_tag"
+      - "json_ld_graph"
+      - "regex_in_content"
+      - "default_fallback"
+    rubric_selectors:
+      - "nav a[href]"
+      - "header a[href]"
+      - "a[href*='/articles/']"
+      - "a[href*='/news/']"
+    card_selectors:
+      - "article"
+    article_link_selectors:
+      - "a[href*='/articles/']"
+      - "a[href*='/news/']"
+    pagination_selectors:
+      - "a.load-more"
+      - "a.show-more"
+      - "a.pagination__next"
+      - "a:contains('Күберәк')"
+      - "a.next"
+      - "a[rel='next']"
+      - "a[href*='page=']"
+      - "a[href*='/page/']"
+    title_selectors:
+      - "h1"
+      - "title"
+      - 'meta[property="og:title"]'
+    date_selectors:
+      - 'script[type="application/ld+json"]'
+      - 'meta[name="published_at"]'
+      - 'meta[property="article:published_time"]'
+      - 'meta[itemprop="datePublished"]'
+      - "time[datetime]"
+    author_selectors:
+      - 'meta[name="Author"]'
+      - 'meta[name="author"]'
+      - 'meta[property="article:author"]'
+      - ".authors_3UWeo .item_1CuO-"
+      - ".material-author"
+      - ".article-author"
+    category_selectors:
+      - 'meta[property="article:section"]'
+      - ".breadcrumb a"
+      - ".rubric"
+      - ".category"
+    content_selectors:
+      - "article"
+      - ".article-body"
+      - ".content"
+      - ".entry-content"
+      - "main"
+    remove_selectors:
+      - ".banner"
+      - ".social"
+      - ".share"
+      - ".widget"
+    article_url_filters:
+      - "/articles/"
+      - "/news/"
+    article_url_excludes:
+      - "/rubric/"

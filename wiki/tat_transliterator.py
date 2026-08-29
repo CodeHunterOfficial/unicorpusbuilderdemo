@@ -30,10 +30,10 @@ DIGRAPHS = {
 
 def transliterate(text: str) -> str:
     """Transliterate Tatar Latin text to Cyrillic."""
-    # сначала диграфы
+    # Process digraphs first
     for lat, cyr in DIGRAPHS.items():
         text = text.replace(lat, cyr)
-    # затем посимвольно
+    # Then character by character
     result = []
     for ch in text:
         result.append(CHAR_MAP.get(ch, ch))

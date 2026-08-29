@@ -1,0 +1,174 @@
+# ============================================================
+# RUSSIAN SITES — 2 major Russian news portals
+# ============================================================
+
+sites:
+
+  # ============================================================
+  # ria.ru — Russian state news agency
+  # ============================================================
+  ria:
+    match:
+      - "ria.ru"
+    default_language: "ru"
+    noise_language: ["common", "ru"]
+    rubric_strategy:
+      - "menu_scraping"
+    rubric_selectors:
+      - "div.header__tag-band-item a.header__tag-band-item-link"
+      - "div.footer__rubric-item a"
+    card_selectors:
+      - "div.cell-main-photo"
+      - "div.cell-list__item"
+      - "div.cell-author__item"
+      - "div.cell-main-bg"
+      - "div.cell-video"
+      - "div.cell-carousel__item"
+    article_link_selectors:
+      - "a.cell-main-photo__link"
+      - "a.cell-list__item-link"
+      - "a.cell-author__item-link"
+      - "a.cell-main-bg__link"
+      - "a.cell-video__link"
+      - "a.cell-carousel__item-link"
+    start_url: "https://ria.ru/lenta/"
+    pagination_selectors:
+      - "a.load-more"
+      - "a[href*='/lenta/page/']"
+    title_selectors:
+      - "h1"
+      - 'meta[property="og:title"]'
+      - "title"
+    date_selectors:
+      - 'meta[property="article:published_time"]'
+      - "time[datetime]"
+      - ".cell-info__date"
+      - ".article__date"
+    author_selectors:
+      - 'meta[name="author"]'
+      - ".cell-author__author-title"
+      - ".article__author"
+    author_strategy:
+      - "meta_tag"
+      - "class_selector"
+    category_selectors:
+      - 'meta[property="article:section"]'
+      - ".breadcrumb a"
+      - ".article__section"
+    category_strategy:
+      - "url_path_parsing"
+      - "meta_tag"
+    content_selectors:
+      - "article"
+      - ".article-body"
+      - ".content"
+      - ".article__body"
+    remove_selectors:
+      - ".banner"
+      - ".share"
+      - ".social"
+      - ".widget"
+      - ".sidebar"
+    card_exclude_classes:
+      - "banner"
+      - "advertisement"
+    article_url_filters:
+      - "/202"
+    article_url_excludes:
+      - "/lenta/"
+      - "/tag/"
+      - "/search/"
+      - "/person/"
+      - "/specialprojects/"
+
+  # ============================================================
+  # mk.ru — Moskovskij Komsomolets newspaper
+  # ============================================================
+  mk:
+    match:
+      - "mk.ru"
+    default_language: "ru"
+    noise_language: ["common", "ru"]
+    rubric_strategy:
+      - "menu_scraping"
+      - "archive_generation"
+    author_strategy:
+      - "meta_tag"
+      - "json_ld_graph"
+      - "default_fallback"
+    rubric_selectors:
+      - "nav.header__navigation ul.nav__list a.nav__link"
+      - "nav a.nav__link"
+    card_selectors:
+      - "li.news-listing__item"
+    article_link_selectors:
+      - "a.news-listing__item-link"
+    pagination_selectors:
+      - "a[href*='/news/']"
+      - "a[href*='/politics/']"
+      - "a[href*='/economics/']"
+      - "a[href*='/incident/']"
+      - "a[href*='/sport/']"
+      - "a[href*='/social/']"
+      - "a[href*='/science/']"
+      - "a[href*='/culture/']"
+      - "a[href*='/moscow/']"
+      - "a[href*='/auto/']"
+      - "a[href*='/realestate/']"
+      - "a[href*='/editorial/exclusive/']"
+      - "a[href*='/press-center/']"
+      - "a[href*='/nationalprojects/']"
+      - "a[href*='/stories/']"
+    title_selectors:
+      - "h1.article__title"
+      - 'meta[property="og:title"]'
+      - "title"
+    date_selectors:
+      - 'meta[property="article:published_time"]'
+      - 'meta[itemprop="datePublished"]'
+      - "time[datetime]"
+    author_selectors:
+      - 'meta[name="author"]'
+      - 'meta[property="article:author"]'
+    category_selectors:
+      - 'meta[property="article:section"]'
+    content_selectors:
+      - "div.article__body"
+      - "[itemprop='articleBody']"
+      - "article"
+    remove_selectors:
+      - ".article__share"
+      - ".article__after-figure-banner"
+      - ".subsctibe-under-article"
+      - ".share"
+      - "script"
+      - "style"
+    article_url_filters:
+      - "/news/"
+      - "/incident/"
+      - "/politics/"
+      - "/economics/"
+      - "/sport/"
+      - "/social/"
+      - "/science/"
+      - "/culture/"
+      - "/moscow/"
+      - "/auto/"
+      - "/realestate/"
+      - "/editorial/exclusive/"
+      - "/press-center/"
+      - "/nationalprojects/"
+      - "/stories/"
+    article_url_excludes:
+      - "/news/rubric/"
+      - "/category/"
+      - "/tag/"
+      - "/authors/"
+      - "/page/"
+      - "/photo/"
+      - "/video/"
+      - "/projects/"
+      - "/upload/"
+      - "/stories/daty/"
+      - ".jpg"
+      - ".png"

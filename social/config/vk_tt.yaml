@@ -1,0 +1,115 @@
+vk_domains:
+  - id: allahtan
+    name: "Don't live without Allah"
+    language: tt
+  - id: public221151764
+    name: "Cuisine 'Temletamak'"
+    language: tt
+  - id: ialgyz16
+    name: "Lonely Bed"
+    language: tt
+  - id: sovet_kinesh
+    name: "NEED ADVICE. NEED ADVICE"
+    language: tt
+  - id: public147862424
+    name: "SAZLYK"
+    language: tt
+  - id: club161110794
+    name: "My friends - my dear friends!"
+    language: tt
+  - id: tatar_live
+    name: "Taken from life"
+    language: tt
+  - id: club157042698
+    name: "Beauty of life"
+    language: tt
+  - id: club159989788
+    name: "I WANT TO KNOW EVERYTHING!"
+    language: tt
+  - id: saida_muhammadjan
+    name: "Saida Mukhametjanova"
+    language: tt
+  - id: shahrikazanda
+    name: "Shahri Kazan"
+    language: tt
+  - id: yazmysh
+    name: "Page of fate | Gulgena Shihapova"
+    language: tt
+  - id: club213182605
+    name: "Magic world"
+    language: tt
+  - id: club126625242
+    name: "Best recipes"
+    language: tt
+  - id: tarbiya_centr
+    name: "EDUCATION"
+    language: tt
+  - id: tartip.tatar
+    name: "TARTIP RADIO / RADIO TARTIP"
+    language: tt
+  - id: lyrics_of_heart
+    name: "Melody flows from the heart"
+    language: tt
+  - id: doga_365
+    name: "Prayers read in daily life"
+    language: tt
+  - id: 1kynel_serlere
+    name: "Secrets of the soul"
+    language: tt
+  - id: acb1n_tatapnap
+    name: "Bend but don't break, wipe but don't fall"
+    language: tt
+  - id: club224146028
+    name: "Girl from Kamyshly"
+    language: tt
+  - id: club223770327
+    name: "My religion is Islam"
+    language: tt
+  - id: club212703588
+    name: "Barefoot"
+    language: tt
+  - id: tuganaylar
+    name: "TUGANAYLAR – Kryashen newspaper"
+    language: tt
+  - id: gaile_mektep
+    name: "Family and School magazine"
+    language: tt
+  - id: gazetasarman
+    name: "SARMAN | Latest news"
+    language: tt
+  - id: dinvm
+    name: "ABOUT RELIGION"
+    language: tt
+  - id: tatartoday
+    name: "TATAR TODAY"
+    language: tt
+  - id: bakchada
+    name: "Garden"
+    language: tt
+  - id: club219872122
+    name: "Friends' corner"
+    language: tt
+  - id: kitap_fm
+    name: "National radio 'Kitap'"
+    language: tt
+  - id: avulselo
+    name: "Village woman"
+    language: tt
+  - id: madani__zhomga
+    name: "CULTURAL FRIDAY"
+    language: tt
+  - id: clubguzelia
+    name: "Guzelia"
+    language: tt
+  - id: tatar.stars
+    name: "TATAR SONGS"
+    language: tt
+  - id: magarif_group
+    name: "Education magazine"
+    language: tt
+  - id: dom_sad_recepty
+    name: "Home. Garden. Recipes"
+    language: tt
+  - id: ahlus_sunna_hanafiy_maturidiy
+    name: "Ahlus-Sunnah Hanafi Maturidi"
+    language: tt

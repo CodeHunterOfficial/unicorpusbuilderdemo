@@ -1,0 +1,17 @@
+# ============================================================
+# UNIVERSAL CONFIG — entry point for the scraper pipeline
+# ============================================================
+version: "2.0"
+name: "optimal_pipeline_modular"
+description: "Modular multilingual scraper config"
+site_count_expected: 34
+
+includes:
+  - global.yaml
+  - languages.yaml
+  - sites_tt.yaml
+  - sites_tg.yaml
+  - sites_ba.yaml
+  - sites_ru.yaml
+  - sites_uz.yaml
+  - sites_os.yaml

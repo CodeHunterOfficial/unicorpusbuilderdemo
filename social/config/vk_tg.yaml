@@ -1,0 +1,16 @@
+vk_domains:
+  - id: tajikistan1991
+    name: "Tajikistan"
+    language: tg
+  - id: osafpro
+    name: "OSAFPRO"
+    language: tg
+  - id: tajnevs2016
+    name: "Tajik news"
+    language: tg
+  - id: worldlove577
+    name: "Garden of literature"
+    language: tg
+  - id: darveshtv
+    name: "Darvesh | Darvesh | Darvish"
+    language: tg

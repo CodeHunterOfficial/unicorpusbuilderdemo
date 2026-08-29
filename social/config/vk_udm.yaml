@@ -1,0 +1,73 @@
+udm_domains:
+  - id: club192304114
+    name: "Association of those interested in the Udmurt language"
+    language: udm
+  - id: udmkylburchi
+    name: "Udmurt POET"
+    language: udm
+  - id: kiziliudm
+    name: "KIZILI / LITTLE STAR magazine"
+    language: udm
+  - id: kenesh_lit
+    name: "Kenesh magazine | Udmurt literature"
+    language: udm
+  - id: zechbur_gazet
+    name: "ZECHBUR! newspaper / Hello! newspaper"
+    language: udm
+  - id: club136368629
+    name: "Songs translated into Udmurt language"
+    language: udm
+  - id: udmurt_kyl
+    name: "Sound, Udmurt language! Sound, Udmurt language!"
+    language: udm
+  - id: udmort
+    name: "UDMURTNESS █✸▒ (Udmurts, Udmurts)"
+    language: udm
+  - id: club103687494
+    name: "Playing with the Udmurt language"
+    language: udm
+  - id: vamysh_kukmor
+    name: "VAMYSH"
+    language: udm
+  - id: club66096399
+    name: "Pochinok Sutersky village club"
+    language: udm
+  - id: club46009803
+    name: "Udmurts of Tatarstan | Udmurts of Tatarstan"
+    language: udm
+  - id: udmdunne
+    name: "UDMURT WORLD"
+    language: udm
+  - id: invozhokukmor
+    name: "Ensemble 'Invozho'"
+    language: udm
+  - id: club74086648
+    name: "Vakyt newspaper"
+    language: udm
+  - id: mylkyd
+    name: "Mood — inspiration"
+    language: udm
+  - id: club202103800
+    name: "Uva branch 'Yoros Kenesh'"
+    language: udm
+  - id: vuyuis
+    name: "VUYIS"
+    language: udm
+  - id: club199575423
+    name: "Melodies of the heart..."
+    language: udm
+  - id: 3ech_ivor
+    name: "GOOD NEWS"
+    language: udm
+  - id: surerudmurt
+    name: "my childhood"
+    language: udm
+  - id: instacheberaj
+    name: "INSTACHEBERAY | internet marathon"
+    language: udm
+  - id: kavergurkids
+    name: "KaverGurKids"
+    language: udm
+  - id: udmethnocultura
+    name: "Ethnocultural lounge"
+    language: udm

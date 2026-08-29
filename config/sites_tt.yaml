@@ -1,0 +1,954 @@
+# ============================================================
+# TATAR SITES — 13 news portals in Tatar language
+# ============================================================
+sites:
+
+  # ============================================================
+  # tatar-inform.tatar — flagship Tatar news agency
+  # ============================================================
+  tatar-inform:
+    match:
+      - "tatar-inform.tatar"
+    default_author: "Tatar-inform"
+    default_language: "tt"
+    noise_language: ["common", "tt"]
+    rubric_strategy:
+      - "menu_scraping"
+      - "pattern_fallback"
+    author_strategy:
+      - "meta_tag"
+      - "json_ld_graph"
+      - "json_ld_simple"
+      - "regex_in_content"
+      - "default_fallback"
+    rubric_selectors:
+      - "div.np-widget-rubric a[href]"
+      - "ul.menu a[href*='/news/']"
+      - "nav a[href*='/news/']"
+      - "a[href*='/news/rubric/list/']"
+      - "a[href*='/news/']"
+    card_selectors:
+      - "li.newsList__item"
+      - "li.all-news__list"
+    card_exclude_classes: ["banner", "_more"]
+    article_link_selectors:
+      - "a.newsList__item-text[href]"
+      - "a.all-news__list__link[href]"
+    pagination_selectors:
+      - "a.next"
+      - "link[rel='next']"
+      - "ul.pagination a[href*='page=']"
+      - "ul.pagination a[href*='/page/']"
+      - "a[href*='page=']"
+      - "a[href*='/page/']"
+    title_selectors:
+      - "h1.main__news-title"
+      - "h1"
+      - "title"
+    date_selectors:
+      - "a.main__date"
+      - 'meta[property="article:published_time"]'
+      - 'meta[itemprop="datePublished"]'
+      - 'meta[name="published_date"]'
+      - "time[datetime]"
+    author_selectors:
+      - 'meta[property="article:author"]'
+      - 'meta[name="author"]'
+      - 'meta[name="Author"]'
+      - ".main__author"
+    category_selectors:
+      - "a.main__rubric"
+      - 'meta[property="article:section"]'
+      - 'meta[name="section"]'
+    category_strategy:
+      - "meta_tag"
+    content_selectors:
+      - "div.page-main__text"
+      - "main"
+      - "article"
+    remove_selectors:
+      - ".news__telegram__text"
+      - ".np-news-single__aftertext"
+      - ".banner"
+      - ".widget"
+    article_url_filters:
+      - "/news/"
+    article_url_excludes:
+      - "/news/rubric/list/"
+      - "/news/widget/list/"
+      - "/photo/widget/list/"
+      - "/video/widget/list/"
+      - "/special-projects/widget/list/"
+
+  # ============================================================
+  # vatantat.ru
+  # ============================================================
+  vatantat:
+    match:
+      - "vatantat.ru"
+    default_language: "tt"
+    noise_language: ["common", "tt"]
+    rubric_strategy:
+      - "menu_scraping"
+      - "pattern_fallback"
+    author_strategy:
+      - "meta_tag"
+      - "json_ld_graph"
+      - "regex_in_content"
+      - "default_fallback"
+    rubric_selectors:
+      - "a.main-menu__link[href*='/news/rubric/']"
+      - "div.np-widget-rubric a[href]"
+      - "a[href*='/news/rubric/list/']"
+    card_selectors:
+      - "li.tm-news-list__item"
+    article_link_selectors:
+      - "a.tm-news-list__item-link"
+    pagination_selectors:
+      - "a.next"
+      - "link[rel='next']"
+      - "ul.pagination a"
+      - "a[href*='page=']"
+      - "a[href*='/page/']"
+    title_selectors:
+      - "h1.single__title"
+      - "h1"
+      - "title"
+    date_selectors:
+      - "time.news__item-date"
+      - 'meta[property="article:published_time"]'
+      - 'meta[itemprop="datePublished"]'
+      - "time[datetime]"
+    author_selectors:
+      - ".single__author"
+      - 'meta[property="article:author"]'
+      - 'meta[name="author"]'
+    category_selectors:
+      - "span.tm-news-list__item-rubric"
+      - 'meta[property="article:section"]'
+    content_selectors:
+      - "div.single__content"
+      - "div.page-main__text"
+      - "main"
+      - "article"
+    remove_selectors:
+      - ".banner"
+      - ".social"
+      - ".share"
+      - ".widget"
+    article_url_filters:
+      - "/news/"
+    article_url_excludes:
+      - "/news/rubric/list/"
+      - "/news/widget/list/"
+      - "/page/"
+
+  # ============================================================
+  # alluki.ru — Nuxt-based news portal
+  # ============================================================
+  alluki:
+    match:
+      - "alluki.ru"
+    default_language: "tt"
+    noise_language: ["common", "tt"]
+    rubric_strategy:
+      - "nuxt_state_parsing"
+      - "menu_scraping"
+      - "pattern_fallback"
+    author_strategy:
+      - "meta_tag"
+      - "json_ld_graph"
+      - "regex_in_content"
+      - "default_fallback"
+    rubric_selectors:
+      - "nav a[href]"
+      - "header a[href]"
+      - "a[href*='/articles/']"
+      - "a[href*='/news/']"
+    card_selectors:
+      - "div.item_ynUpT"
+      - "article"
+    article_link_selectors:
+      - "a[href*='/articles/']"
+      - "a[href*='/news/']"
+    pagination_selectors:
+      - "a.load-more"
+      - "a.show-more"
+      - "a.pagination__next"
+      - "a:contains('Next')"
+      - "a.next"
+      - "a[rel='next']"
+      - "a[href*='page=']"
+      - "a[href*='/page/']"
+    title_selectors:
+      - "h1.h1_fQcc_"
+      - "h1"
+      - 'meta[property="og:title"]'
+      - "title"
+    date_selectors:
+      - 'script[type="application/ld+json"]'
+      - 'meta[property="article:published_time"]'
+      - 'meta[itemprop="datePublished"]'
+      - "div.cm-date"
+      - "time[datetime]"
+    author_selectors:
+      - 'meta[name="author"]'
+      - 'meta[property="article:author"]'
+      - ".authors_3UWeo .item_1CuO-"
+      - ".single__author"
+    category_selectors:
+      - "a.cm-rubric"
+      - 'meta[property="article:section"]'
+      - ".breadcrumb a"
+    content_selectors:
+      - "div.paragraph.serif-text"
+      - "div.single__content"
+      - ".article-body"
+      - "article"
+      - ".content"
+      - "main"
+    remove_selectors:
+      - ".banner"
+      - ".social"
+      - ".share"
+      - ".widget"
+    article_url_filters:
+      - "/articles/"
+      - "/news/"
+    article_url_excludes:
+      - "/rubric/"
+      - "/page/"
+
+  # ============================================================
+  # beznen.ru — Drupal-based newspaper
+  # ============================================================
+  beznen:
+    match:
+      - "beznen.ru"
+    default_language: "tt"
+    default_author: "Beznen gazit"
+    noise_language: ["common", "tt"]
+    rubric_strategy:
+      - "menu_scraping"
+      - "pattern_fallback"
+    author_strategy:
+      - "meta_tag"
+      - "json_ld_graph"
+      - "regex_in_content"
+      - "default_fallback"
+    rubric_selectors:
+      - "nav#block-vserubriki a[href*='/archive/']"
+      - "nav[aria-labelledby='block-vserubriki-menu'] a[href*='/archive/']"
+      - "a[href*='/archive/']"
+    card_selectors:
+      - ".view-content article"
+      - "article.node_type__article"
+    article_link_selectors:
+      - "article a[href*='/archive/']"
+      - ".view-content article a[href]"
+    pagination_selectors:
+      - "li.pager__item--next a"
+      - "li.pager__item--next"
+      - "a[rel='next']"
+      - "link[rel='next']"
+      - "a[href*='page=']"
+    title_selectors:
+      - "h1"
+      - "title"
+      - 'meta[property="og:title"]'
+    date_selectors:
+      - "li.article_node__date"
+      - 'meta[property="article:published_time"]'
+      - 'meta[itemprop="datePublished"]'
+      - 'meta[name="published_date"]'
+      - "time[datetime]"
+    author_selectors:
+      - "div.article_node__info a[href*='/user/']"
+      - 'meta[name="author"]'
+      - 'meta[property="article:author"]'
+    category_selectors:
+      - "div.article_node__info a[href*='/archive/']:not([href*='/release/'])"
+      - 'meta[property="article:section"]'
+    content_selectors:
+      - "div.article_node__content"
+      - "div.para_text"
+      - "main"
+      - "article"
+    remove_selectors:
+      - ".banner"
+      - ".social"
+      - ".share"
+      - ".widget"
+      - ".sidebar"
+    article_url_filters:
+      - "/archive/"
+    article_url_excludes:
+      - "/archive/release/"
+      - "/page/"
+
+  # ============================================================
+  # intertat.tatar — youth-oriented Tatar news
+  # ============================================================
+  intertat:
+    match:
+      - "intertat.tatar"
+    default_language: "tt"
+    default_author: "Intertat"
+    noise_language: ["common", "tt"]
+    rubric_strategy:
+      - "menu_scraping"
+      - "pattern_fallback"
+    author_strategy:
+      - "meta_tag"
+      - "json_ld_graph"
+      - "regex_in_content"
+      - "default_fallback"
+    rubric_selectors:
+      - "div.menu-nav__col ul.menu-list a.menu-list__link[href*='/news/rubric/list/']"
+      - "a.menu-list__link[href*='/news/rubric/list/']"
+      - "a[href*='/news/rubric/list/']"
+    card_selectors:
+      - "li.newsList__item"
+      - "li.all-news__list"
+    article_link_selectors:
+      - "a.newsList__item-text"
+      - "a.all-news__list__link"
+      - "a[href*='/news/']"
+    pagination_selectors:
+      - "a.next"
+      - "a:contains('Next')"
+      - "link[rel='next']"
+      - "ul.pagination a"
+      - "a[href*='page=']"
+      - "a[href*='/page/']"
+    title_selectors:
+      - "h1"
+      - "title"
+      - 'meta[property="og:title"]'
+    date_selectors:
+      - "time[datetime]"
+      - 'meta[property="article:published_time"]'
+      - 'meta[itemprop="datePublished"]'
+      - 'meta[name="published_date"]'
+    author_selectors:
+      - 'meta[name="author"]'
+      - 'meta[property="article:author"]'
+    category_selectors:
+      - 'meta[property="article:section"]'
+    category_strategy:
+      - "meta_tag"
+    content_selectors:
+      - "div.page-main__text"
+      - "div.news-detail"
+      - "article"
+      - "main"
+    remove_selectors:
+      - ".banner"
+      - ".social"
+      - ".share"
+      - ".widget"
+      - ".news__telegram__text"
+      - ".np-news-single__aftertext"
+    article_url_filters:
+      - "/news/"
+    article_url_excludes:
+      - "/news/rubric/list/"
+      - "/news/widget/list/"
+      - "/page/"
+
+  # ============================================================
+  # kazanutlary.ru — literary magazine
+  # ============================================================
+  kazanutlary:
+    match:
+      - "kazanutlary.ru"
+    default_language: "tt"
+    default_author: "Kazan utlary"
+    noise_language: ["common", "tt"]
+    rubric_strategy:
+      - "menu_scraping"
+      - "pattern_fallback"
+    author_strategy:
+      - "meta_tag"
+      - "json_ld_graph"
+      - "regex_in_content"
+      - "default_fallback"
+    rubric_selectors:
+      - "li.news-list__item_rubric a.news-list__link"
+      - ".news-list__list .news-list__item a.news-list__link"
+      - "a[href*='/news/rubric/list/']"
+    card_selectors:
+      - "ul.news-list__list li.news-list__item"
+      - "li.news-list__item"
+    article_link_selectors:
+      - "a.news-list__link"
+    pagination_selectors:
+      - "div.pagination a:contains('Next page')"
+      - "div.pagination a:contains('→')"
+      - "a[rel='next']"
+      - "link[rel='next']"
+      - "a[href*='/page/']"
+    title_selectors:
+      - "h1"
+      - "title"
+      - 'meta[property="og:title"]'
+    date_selectors:
+      - "a.widget__full_date"
+      - 'meta[property="article:published_time"]'
+      - 'meta[itemprop="datePublished"]'
+      - 'meta[name="published_date"]'
+      - "time[datetime]"
+    author_selectors:
+      - 'meta[property="article:author"]'
+      - 'meta[name="author"]'
+    category_selectors:
+      - 'meta[property="article:section"]'
+    category_strategy:
+      - "meta_tag"
+    content_selectors:
+      - "div.single-page__content"
+      - "div.page-main__text"
+      - "main"
+      - "article"
+    remove_selectors:
+      - ".banner"
+      - ".social"
+      - ".share"
+      - ".widget"
+    article_url_filters:
+      - "/news/"
+    article_url_excludes:
+      - "/news/rubric/list/"
+      - "/page/"
+
+  # ============================================================
+  # matbugat.ru — press / media aggregator
+  # ============================================================
+  matbugat:
+    match:
+      - "matbugat.ru"
+    default_language: "tt"
+    noise_language: ["common", "tt"]
+    rubric_strategy:
+      - "menu_scraping"
+      - "pattern_fallback"
+    author_strategy:
+      - "meta_tag"
+      - "json_ld_graph"
+      - "regex_in_content"
+      - "default_fallback"
+    rubric_selectors:
+      - "ul.sub-menu a[href*='subject=']"
+      - "a[href*='subject=']"
+    card_selectors:
+      - "div.item"
+    article_link_selectors:
+      - "a.title"
+      - "div.item a[href*='/news/']"
+    pagination_selectors:
+      - "a[href*='page=']"
+      - "a[rel='next']"
+      - "link[rel='next']"
+    title_selectors:
+      - "h1"
+      - "a.title"
+      - "title"
+    date_selectors:
+      - "div.top"
+      - 'meta[property="article:published_time"]'
+      - 'meta[itemprop="datePublished"]'
+      - "time[datetime]"
+    author_selectors:
+      - 'meta[name="author"]'
+      - 'meta[property="article:author"]'
+    category_selectors:
+      - "div.top"
+      - 'meta[property="article:section"]'
+    content_selectors:
+      - "div.item-view"
+      - "p.text"
+      - "div.item-view p"
+      - "article"
+      - "main"
+    remove_selectors:
+      - ".banner"
+      - ".social"
+      - ".share"
+      - ".widget"
+    article_url_filters:
+      - "/news/"
+      - "?id="
+    article_url_excludes:
+      - "/page/"
+
+  # ============================================================
+  # nurlat-tat.ru — regional news (Nurlat)
+  # ============================================================
+  nurlat:
+    match:
+      - "nurlat-tat.ru"
+    default_language: "tt"
+    default_author: "Nurlat-inform"
+    noise_language: ["common", "tt"]
+    rubric_strategy:
+      - "auto_detect_multi"
+      - "menu_scraping"
+      - "pattern_fallback"
+    author_strategy:
+      - "meta_tag"
+      - "json_ld_graph"
+      - "regex_in_content"
+      - "default_fallback"
+    rubric_selectors:
+      - "ul.footer__nav_ul a[href*='/news/rubric/list/']"
+      - "ul.footer__nav_ul a[href*='/news/widget/list/']"
+      - "a[href*='/news/rubric/list/']"
+      - "a[href*='/news/widget/list/']"
+      - "li.footer__nav_li a[href]"
+    card_selectors:
+      - "div.all-news__section"
+      - "ul.all-news__section_ul li.all-news__list"
+      - "li.all-news__list"
+    article_link_selectors:
+      - "div.all-news__section a[href*='/news/']"
+      - "ul.all-news__section_ul a[href*='/news/']"
+      - "a.all-news__list__link"
+      - "a[href*='/news/']"
+    pagination_selectors:
+      - "ul.pagination a"
+      - "a:contains('Next')"
+      - "a.next"
+      - "link[rel='next']"
+      - "a[href*='/page/']"
+    title_selectors:
+      - "h1.news-main-container__title"
+      - "h1"
+      - "title"
+      - 'meta[property="og:title"]'
+    date_selectors:
+      - "time.news-main-container__date"
+      - 'meta[property="article:published_time"]'
+      - 'meta[itemprop="datePublished"]'
+      - "time[datetime]"
+    author_selectors:
+      - "span.news-main-container__author"
+      - "div.news__author"
+      - 'meta[property="article:author"]'
+      - 'meta[name="author"]'
+    category_selectors:
+      - 'meta[property="article:section"]'
+      - "ul.breadcrumb a"
+    content_selectors:
+      - "div.news-main-container__paragraph"
+      - "div.news__text"
+      - "article"
+      - "main"
+    remove_selectors:
+      - ".banner"
+      - ".social"
+      - ".share"
+      - ".widget"
+      - ".news__telegram__text"
+    article_url_filters:
+      - "/news/"
+    article_url_excludes:
+      - "/news/rubric/list/"
+      - "/news/widget/list/"
+      - "/page/"
+      - "/tag/"
+
+  # ============================================================
+  # syuyumbike.ru — women's magazine
+  # ============================================================
+  syuyumbike:
+    match:
+      - "syuyumbike.ru"
+    default_language: "tt"
+    default_author: "Syuyumbike"
+    noise_language: ["common", "tt"]
+    rubric_strategy:
+      - "menu_scraping"
+      - "pattern_fallback"
+    author_strategy:
+      - "meta_tag"
+      - "json_ld_graph"
+      - "regex_in_content"
+      - "default_fallback"
+    rubric_selectors:
+      - "li.main-menu__item a.main-menu__link[href*='/news/rubric/list/']"
+      - "a.sidebar-map__list-link[href*='/news/rubric/list/']"
+      - "a.sidebar-map__title[href*='/news/rubric/list/']"
+      - "a[href*='/news/rubric/list/']"
+    card_selectors:
+      - "li.news-list__item"
+      - "article"
+    article_link_selectors:
+      - "a[href*='/news/']"
+    pagination_selectors:
+      - "ul.pagination a"
+      - "a:contains('Next page')"
+      - "a:contains('❯')"
+      - "a.next"
+      - "link[rel='next']"
+      - "a[href*='/page/']"
+    title_selectors:
+      - "h1.single-page__title"
+      - "h1"
+      - "title"
+      - 'meta[property="og:title"]'
+    date_selectors:
+      - 'meta[property="article:published_time"]'
+      - 'meta[itemprop="datePublished"]'
+      - "time[datetime]"
+    author_selectors:
+      - 'meta[name="author"]'
+      - 'meta[property="article:author"]'
+    category_selectors:
+      - 'meta[property="article:section"]'
+    category_strategy:
+      - "meta_tag"
+      - "url_path_parsing"
+    content_selectors:
+      - "div.single-page__content"
+      - "article"
+      - ".content"
+      - "main"
+    remove_selectors:
+      - ".banner"
+      - ".social"
+      - ".share"
+      - ".widget"
+      - ".comments"
+    article_url_filters:
+      - "/news/"
+    article_url_excludes:
+      - "/news/rubric/list/"
+      - "/page/"
+      - "/tag/"
+
+  # ============================================================
+  # tuganaylar.ru — regional news network
+  # ============================================================
+  tuganaylar:
+    match:
+      - "tuganaylar.ru"
+    default_author: "Tuganaylar"
+    default_language: "tt"
+    noise_language: ["common", "tt"]
+    rubric_strategy:
+      - "auto_detect_multi"
+      - "pattern_fallback"
+    author_strategy:
+      - "meta_tag"
+      - "json_ld_graph"
+      - "regex_in_content"
+      - "default_fallback"
+    rubric_selectors:
+      - "div.np-widget-rubric a[href]"
+      - ".widget a[href*='/news/rubric/list/']"
+      - "a[href*='/news/rubric/list/']"
+    card_selectors:
+      - "ul.all-news__section_ul li.all-news__list"
+      - "li.all-news__list"
+    article_link_selectors:
+      - "a.all-news__list__link[href]"
+      - "a[href*='/news/']"
+    pagination_selectors:
+      - "a.next"
+      - "link[rel='next']"
+      - "a:contains('Next')"
+      - "a[href*='/page/']"
+    title_selectors:
+      - "h1"
+      - "title"
+    date_selectors:
+      - 'meta[property="article:published_time"]'
+      - 'meta[itemprop="datePublished"]'
+      - 'meta[name="published_date"]'
+      - "time[datetime]"
+    author_selectors:
+      - 'meta[property="article:author"]'
+      - 'meta[name="author"]'
+    category_selectors:
+      - 'meta[property="article:section"]'
+    category_strategy:
+      - "meta_tag"
+    content_selectors:
+      - "div.news-main-container__paragraph"
+      - "main"
+      - "article"
+    remove_selectors:
+      - ".news__telegram__text"
+      - ".np-news-single__aftertext"
+    article_url_filters:
+      - "/news/"
+    article_url_excludes:
+      - "/news/rubric/list/"
+      - "/page/"
+
+  # ============================================================
+  # shahrikazan.ru — city news (Kazan)
+  # ============================================================
+  shahrikazan:
+    match:
+      - "shahrikazan.ru"
+    default_language: "tt"
+    noise_language: ["common", "tt"]
+    rubric_strategy:
+      - "menu_scraping"
+      - "pattern_fallback"
+    author_strategy:
+      - "meta_tag"
+      - "json_ld_graph"
+      - "regex_in_content"
+      - "default_fallback"
+    rubric_selectors:
+      - "nav.burger__navigation ul.burger-nav a.burger-nav__link[href*='/news/rubric/list/']"
+      - "a.burger-nav__link[href*='/news/rubric/list/']"
+      - "a[href*='/news/rubric/list/']"
+    card_selectors:
+      - "ul.list li.list__item"
+    article_link_selectors:
+      - "a.list__link"
+    pagination_selectors:
+      - "a:contains('Next')"
+      - "a[rel='next']"
+      - "link[rel='next']"
+      - "a[href*='/page/']"
+    title_selectors:
+      - "h1.main__news-title"
+      - "h1"
+      - 'meta[property="og:title"]'
+      - "title"
+    date_selectors:
+      - "a.main__date"
+      - 'meta[property="article:published_time"]'
+      - 'meta[itemprop="datePublished"]'
+      - "time[datetime]"
+      - "span.list__date"
+    author_selectors:
+      - 'meta[property="article:author"]'
+      - 'meta[name="author"]'
+    category_selectors:
+      - 'meta[property="article:section"]'
+      - "a.main__rubric"
+    category_strategy:
+      - "meta_tag"
+    content_selectors:
+      - "div.page-main__text"
+      - "div.main__text"
+      - "main"
+      - "article"
+    remove_selectors:
+      - ".banner"
+      - ".social"
+      - ".share"
+      - ".widget"
+      - ".widget-any-content"
+      - ".main__icons"
+      - ".widget-stat"
+    article_url_filters:
+      - "/news/"
+    article_url_excludes:
+      - "/news/rubric/list/"
+      - "/news/date/list/"
+      - "/page/"
+      - "/photo/"
+      - "/video/"
+
+  # ============================================================
+  # almet-rt.ru — regional news (Almetyevsk)
+  # ============================================================
+  almet-rt:
+    match:
+      - "almet-rt.ru"
+    default_author: "Tuganaylar"
+    default_language: "tt"
+    noise_language: ["common", "tt"]
+    cookie_lang: "tt"
+    rubric_strategy:
+      - "auto_detect_multi"
+      - "pattern_fallback"
+    author_strategy:
+      - "meta_tag"
+      - "json_ld_graph"
+      - "regex_in_content"
+      - "default_fallback"
+    rubric_selectors:
+      - "div.np-widget-rubric a[href]"
+      - ".widget a[href*='/news/rubric/list/']"
+      - "a[href*='/news/rubric/list/']"
+    card_selectors:
+      - "ul.all-news__section_ul li.all-news__list"
+      - "li.all-news__list"
+    article_link_selectors:
+      - "a.all-news__list__link[href]"
+      - "a[href*='/news/']"
+    pagination_selectors:
+      - "a.next"
+      - "link[rel='next']"
+      - "a:contains('Next')"
+      - "a[href*='/page/']"
+    title_selectors:
+      - "h1"
+      - "title"
+    date_selectors:
+      - 'meta[property="article:published_time"]'
+      - 'meta[itemprop="datePublished"]'
+      - 'meta[name="published_date"]'
+      - "time[datetime]"
+    author_selectors:
+      - 'meta[property="article:author"]'
+      - 'meta[name="author"]'
+    category_selectors:
+      - 'meta[property="article:section"]'
+    category_strategy:
+      - "meta_tag"
+    content_selectors:
+      - "div.news-main-container__paragraph"
+      - "main"
+      - "article"
+    remove_selectors:
+      - ".news__telegram__text"
+      - ".np-news-single__aftertext"
+    article_url_filters:
+      - "/news/"
+    article_url_excludes:
+      - "/news/rubric/list/"
+      - "/page/"
+
+  # ============================================================
+  # azatliq.org — Tatar service of RFE/RL
+  # ============================================================
+  azatliq:
+    match:
+      - "azatliq.org"
+    amp_mode: "prefix"
+    default_language: "tt"
+    noise_language: ["common", "tt"]
+    rubric_strategy:
+      - "menu_scraping"
+      - "pattern_fallback"
+    author_strategy:
+      - "meta_tag"
+      - "class_selector"
+      - "json_ld_graph"
+      - "regex_in_content"
+      - "default_fallback"
+    rubric_selectors:
+      - "ul.main-nav__list a[href]"
+      - "nav a[href]"
+      - "header a[href]"
+      - "a[href*='/s/']"
+      - "a[href*='/topic/']"
+    card_selectors:
+      - "ul.archive-list li"
+    article_link_selectors:
+      - "a[href*='/a/']"
+    pagination_selectors:
+      - "a.btn.link-showMore"
+      - "a.load-more"
+      - "a.show-more"
+      - "a:contains('More')"
+      - "a[rel='next']"
+      - "a[href*='p=']"
+    title_selectors:
+      - "h1"
+      - "title"
+      - 'meta[property="og:title"]'
+    date_selectors:
+      - 'meta[property="article:published_time"]'
+      - 'meta[name="pubdate"]'
+      - 'meta[itemprop="datePublished"]'
+      - "time[datetime]"
+    author_selectors:
+      - 'meta[name="Author"]'
+      - 'meta[name="author"]'
+      - ".c-author"
+      - ".c-author__content"
+      - ".media-block__title--author"
+    category_selectors:
+      - 'meta[property="article:section"]'
+      - ".category"
+      - ".tag"
+    content_selectors:
+      - "article"
+      - ".article-body"
+      - ".content"
+      - "main"
+    remove_selectors:
+      - ".banner"
+      - ".social"
+      - ".share"
+      - ".cookie"
+      - ".widget"
+      - ".sidebar"
+    article_url_filters:
+      - "/a/"
+    article_url_excludes: []
+
+  # ============================================================
+  # mamadysh-rt.ru — regional news (Mamadysh)
+  # ============================================================
+  mamadysh-rt:
+    match:
+      - "mamadysh-rt.ru"
+    default_language: "tt"
+    noise_language: ["common", "tt"]
+    cookie_lang: "tt"
+    rubric_strategy:
+      - "auto_detect_multi"
+      - "pattern_fallback"
+    author_strategy:
+      - "meta_tag"
+      - "json_ld_graph"
+      - "regex_in_content"
+      - "default_fallback"
+    rubric_selectors:
+      - "a.nav__link[href*='rubric']"
+      - "div.np-widget-rubric a[href]"
+      - "a[href*='/news/rubric/list/']"
+      - "nav a[href]"
+      - "header a[href*='rubric']"
+    card_selectors:
+      - "li.all-news__list"
+    article_link_selectors:
+      - "a.all-news__list__link[href]"
+      - "a[href*='/news/']"
+    pagination_selectors:
+      - "button.news__button"
+      - "a.all-news__button_forward"
+      - "ul.pagination a"
+      - "a.next"
+      - "link[rel='next']"
+      - "a[href*='/page/']"
+    title_selectors:
+      - "h1"
+      - "title"
+    date_selectors:
+      - "a.oneNews__data[href*='/date/list/']"
+      - 'meta[property="article:published_time"]'
+      - 'meta[itemprop="datePublished"]'
+      - "time[datetime]"
+    author_selectors:
+      - ".widget__author"
+      - 'meta[property="article:author"]'
+      - 'meta[name="author"]'
+    category_selectors:
+      - ".newsList__title"
+      - 'meta[property="article:section"]'
+    content_selectors:
+      - ".news-main-container__paragraph"
+      - "main"
+      - "article"
+    remove_selectors:
+      - ".banner"
+      - ".share"
+      - ".social"
+      - ".widget"
+    article_url_filters:
+      - "/news/"
+    article_url_excludes:
+      - "/news/rubric/list/"
+      - "/rubric/"
+      - "/page/"

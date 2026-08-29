@@ -1,0 +1,78 @@
+# ============================================================
+# UZBEK SITES — 1 news portal in Tajik language (hosted in Uzbekistan)
+# ============================================================
+
+sites:
+
+  # ============================================================
+  # ovozitojik.uz — Tajik-language portal published in Uzbekistan
+  # ============================================================
+  ovozitojik:
+    match:
+      - "ovozitojik.uz"
+    default_language: "tg"
+    noise_language: ["common", "tg"]
+    rubric_strategy:
+      - "menu_scraping"
+      - "context_passed"
+      - "pattern_fallback"
+    author_strategy:
+      - "meta_tag"
+      - "json_ld_graph"
+      - "regex_in_content"
+      - "default_fallback"
+    rubric_selectors:
+      - "ul.nav.navbar-nav a[href*='/categories/']"
+      - "nav a[href]"
+      - "header a[href]"
+      - "a[href*='/category/']"
+      - "a[href*='/news/']"
+    card_selectors:
+      - "div.news-post.standard-post2"
+    article_link_selectors:
+      - "h2 a"
+    pagination_selectors:
+      - "div.pagination-box ul.pagination a"
+      - "ul.pagination a"
+      - "a.next"
+      - "a[rel='next']"
+      - "a[href*='page=']"
+      - "a[href*='/page/']"
+    title_selectors:
+      - "h1"
+      - "title"
+      - 'meta[property="og:title"]'
+    date_selectors:
+      - "div.title-post ul.post-tags li i.fa-clock-o"
+      - 'meta[property="article:published_time"]'
+      - 'meta[itemprop="datePublished"]'
+      - "time[datetime]"
+    author_selectors:
+      - "div.post-content p strong"
+      - 'meta[name="author"]'
+      - 'meta[property="article:author"]'
+    category_selectors:
+      - 'meta[property="article:section"]'
+      - ".breadcrumb a"
+    category_strategy:
+      - "context_passed"
+      - "meta_tag"
+    content_selectors:
+      - "div.post-content"
+      - "article"
+      - ".article-body"
+      - "main"
+    remove_selectors:
+      - ".banner"
+      - ".share"
+      - ".social"
+      - ".widget"
+    article_url_filters:
+      - "/news/"
+      - "/article/"
+      - "/post/"
+    article_url_excludes:
+      - "/category/"
+      - "/tag/"
+      - "/author/"
+      - "/page/"

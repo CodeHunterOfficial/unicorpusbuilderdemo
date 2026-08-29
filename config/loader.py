@@ -1,35 +1,45 @@
+# config/loader.py — Config loader with logging (fixed)
 from __future__ import annotations
 
 import copy
 import json
 import os
-from dataclasses import dataclass, field
 import sys
+import io
+from dataclasses import dataclass, field
 from typing import Any, Dict, List, Optional
 from urllib.parse import urlparse
 
-try:
-    import yaml
-except ImportError:
-    raise ImportError("PyYAML is required. Install it with: pip install pyyaml")
+import yaml
 
+# Fix Windows console encoding for Unicode output
+if sys.platform == 'win32':
+    sys.stdout = io.TextIOWrapper(sys.stdout.buffer, encoding='utf-8', errors='replace')
+    sys.stderr = io.TextIOWrapper(sys.stderr.buffer, encoding='utf-8', errors='replace')
+
+# Add project root to sys.path for logger import
+sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
+from logger_setup import get_file_logger
+# Initialize module logger (file only, no console output)
+logger = get_file_logger("loader", "logs/loader.log")
 
 # =====================================================
 # Utilities
 # =====================================================
 
 def deep_merge(base: Dict[str, Any], override: Dict[str, Any]) -> Dict[str, Any]:
-    """Deep merge two dictionaries without mutating inputs."""
+    """Deep merge two dictionaries, extending lists instead of replacing them."""
     result = copy.deepcopy(base) if base else {}
     if not override:
         return result
     for key, value in override.items():
-        if (
-            key in result
-            and isinstance(result[key], dict)
-            and isinstance(value, dict)
-        ):
-            result[key] = deep_merge(result[key], value)
+        if key in result:
+            if isinstance(result[key], dict) and isinstance(value, dict):
+                result[key] = deep_merge(result[key], value)
+            elif isinstance(result[key], list) and isinstance(value, list):
+                result[key] = result[key] + copy.deepcopy(value)
+            else:
+                result[key] = copy.deepcopy(value)
         else:
             result[key] = copy.deepcopy(value)
     return result
@@ -80,12 +90,10 @@ def normalize_text_rules(text_rules: Optional[Dict[str, Any]]) -> Dict[str, Any]
 
     normalized = copy.deepcopy(text_rules)
 
-    # Normalize noise_words: each language key must hold a list of strings
     if "noise_words" in normalized and isinstance(normalized["noise_words"], dict):
         for lang, words in normalized["noise_words"].items():
             normalized["noise_words"][lang] = clean_list(words)
 
-    # Normalize stopwords: per_language dict
     if "stopwords" in normalized and isinstance(normalized["stopwords"], dict):
         sw = normalized["stopwords"]
         if "enabled" not in sw:
@@ -96,7 +104,6 @@ def normalize_text_rules(text_rules: Optional[Dict[str, Any]]) -> Dict[str, Any]
             if key not in ("enabled", "per_language"):
                 sw[key] = clean_list(sw.get(key))
 
-    # Normalize filters
     if "filters" in normalized and isinstance(normalized["filters"], dict):
         f = normalized["filters"]
         f.setdefault("min_word_length", 2)
@@ -105,19 +112,16 @@ def normalize_text_rules(text_rules: Optional[Dict[str, Any]]) -> Dict[str, Any]
         f.setdefault("min_text_length", 20)
         f.setdefault("deduplicate_lines", True)
 
-    # Normalize patterns
     if "patterns" in normalized and isinstance(normalized["patterns"], dict):
         for k in ("ui_patterns", "ad_patterns"):
             if k in normalized["patterns"]:
                 normalized["patterns"][k] = clean_list(normalized["patterns"][k])
 
-    # Normalize language_detection
     if "language_detection" in normalized and isinstance(normalized["language_detection"], dict):
         ld = normalized["language_detection"]
         ld.setdefault("enabled", False)
         ld.setdefault("fallback", "unknown")
 
-    # Normalize normalize options
     if "normalize" in normalized and isinstance(normalized["normalize"], dict):
         n = normalized["normalize"]
         n.setdefault("lowercase", True)
@@ -132,12 +136,7 @@ def normalize_text_rules(text_rules: Optional[Dict[str, Any]]) -> Dict[str, Any]
 # =====================================================
 
 def normalize_profile(profile: Optional[Dict[str, Any]]) -> Dict[str, Any]:
-    """Normalize a single site/default profile.
-
-    - Missing selector/filter lists become empty lists.
-    - Strategy fields are removed if absent, to allow inheritance.
-    - noise_language is set to a default if missing.
-    """
+    """Normalize a single site/default profile."""
     profile = profile or {}
     profile = copy.deepcopy(profile)
 
@@ -149,7 +148,8 @@ def normalize_profile(profile: Optional[Dict[str, Any]]) -> Dict[str, Any]:
     profile.setdefault("verify_ssl", None)
     profile.setdefault("date_locale", None)
     profile.setdefault("start_url", None)
-    profile.setdefault("noise_language", ["common", "ru"])   # язык шума по умолчанию
+    profile.setdefault("api_source", {})
+    profile.setdefault("noise_language", ["common", "ru"])
 
     selectors_and_filters = [
         "rubric_selectors",
@@ -203,6 +203,7 @@ def normalize_config(config: Dict[str, Any]) -> Dict[str, Any]:
     config.setdefault("default_profile", {})
     config.setdefault("reusable_strategies", {})
     config.setdefault("sites", {})
+    config.setdefault("languages", {})
 
     if not isinstance(config["global"], dict):
         config["global"] = {}
@@ -212,6 +213,8 @@ def normalize_config(config: Dict[str, Any]) -> Dict[str, Any]:
         config["reusable_strategies"] = {}
     if not isinstance(config["sites"], dict):
         config["sites"] = {}
+    if not isinstance(config["languages"], dict):
+        config["languages"] = {}
 
     global_cfg = config["global"]
 
@@ -354,27 +357,59 @@ def resolve_auto_family(domain: str, html_sample: str, default_profile: Dict[str
 # =====================================================
 
 def resolve_noise_words(site_cfg: Dict[str, Any], config: Dict[str, Any]) -> List[str]:
-    """Собрать итоговый список шумовых слов на основе noise_language."""
+    """Collect noise words based on noise_language from languages.yaml."""
     languages = site_cfg.get("noise_language", ["common", "ru"])
-    noise_dict = config.get("global", {}).get("text_rules", {}).get("noise_words", {})
+    
+    lang_data = config.get("languages", {})
     words = []
     for lang in languages:
-        words.extend(noise_dict.get(lang, []))
+        if lang in lang_data:
+            words.extend(lang_data[lang].get("noise_words", []))
+    
+    if not words:
+        noise_dict = config.get("global", {}).get("text_rules", {}).get("noise_words", {})
+        for lang in languages:
+            words.extend(noise_dict.get(lang, []))
+    
     return list(set(words))
 
 
-def get_site_config(url: str, html_sample: str = "", config: Dict[str, Any] = None) -> Dict[str, Any]:
-    """Return fully resolved site configuration for a given URL.
+def resolve_author_regex_patterns(site_cfg: Dict[str, Any], config: Dict[str, Any]) -> List[str]:
+    """Collect author regex patterns from language packages in languages.yaml."""
+    patterns = []
+    lang_data = config.get("languages", {})
+    
+    # Always include _common universal patterns first
+    common = lang_data.get("_common", {})
+    if "author_regex_universal" in common:
+        patterns.extend(clean_list(common["author_regex_universal"]))
+    
+    # Get noise_language list (languages for UI/noise filtering)
+    noise_langs = site_cfg.get("noise_language", ["common", "ru"])
+    
+    # Add author_regex from each noise language
+    for lang in noise_langs:
+        if lang in lang_data and "author_regex" in lang_data[lang]:
+            patterns.extend(clean_list(lang_data[lang]["author_regex"]))
+    
+    # Also add from default_language if it differs from noise languages
+    default_lang = site_cfg.get("default_language")
+    if default_lang and default_lang not in noise_langs and default_lang in lang_data:
+        if "author_regex" in lang_data[default_lang]:
+            patterns.extend(clean_list(lang_data[default_lang]["author_regex"]))
+    
+    # If still empty, fallback to global reusable_strategies patterns
+    if not patterns:
+        reusable = config.get("reusable_strategies", {})
+        author_src = reusable.get("author_sources", {})
+        regex_cfg = author_src.get("regex_in_content", {})
+        patterns = clean_list(regex_cfg.get("patterns", []))
+    
+    return patterns
 
-    Merges site profile over default_profile, then:
-    - Applies auto-detection family if site is unknown and html_sample provided
-    - Inherits verify_ssl from global.request if not set
-    - Selects start_url (site-specific or global)
-    - Attaches global request, limits, url_rules, content_cleanup,
-      meta_extraction, text_rules, reusable_strategies
-    - Adds meta fields _site_key, _domain, _url, _default_author
-    - Resolves noise words and adds them as _noise_words
-    """
+
+def get_site_config(url: str, html_sample: str = "", config: Dict[str, Any] = None) -> Dict[str, Any]:
+    """Return fully resolved site configuration for a given URL."""
     if not isinstance(config, dict):
         raise ValueError("config must be a dict")
 
@@ -384,7 +419,6 @@ def get_site_config(url: str, html_sample: str = "", config: Dict[str, Any] = No
 
     merged = deep_merge(default_profile, site_cfg)
 
-    # Auto-detect family for unknown sites
     if site_key == "default" and html_sample:
         family_profile = resolve_auto_family(
             safe_domain(url), html_sample, default_profile
@@ -392,36 +426,18 @@ def get_site_config(url: str, html_sample: str = "", config: Dict[str, Any] = No
         if family_profile:
             merged = deep_merge(merged, family_profile)
 
-    # Inherit verify_ssl from global
     if merged.get("verify_ssl") is None:
         global_verify = config.get("global", {}).get("request", {}).get("verify_ssl")
         if global_verify is not None:
             merged["verify_ssl"] = bool(global_verify)
 
-    # Attach global sub-configs
-    merged["_global_request"] = copy.deepcopy(config.get("global", {}).get("request", {}))
-    merged["_global_limits"] = copy.deepcopy(config.get("global", {}).get("limits", {}))
-    merged["_global_url_rules"] = copy.deepcopy(config.get("global", {}).get("url_rules", {}))
-    merged["_global_content_cleanup"] = copy.deepcopy(config.get("global", {}).get("content_cleanup", {}))
-    merged["_global_meta_extraction"] = copy.deepcopy(config.get("global", {}).get("meta_extraction", {}))
-    merged["_global_text_rules"] = copy.deepcopy(config.get("global", {}).get("text_rules", {}))
-    merged["_reusable_strategies"] = copy.deepcopy(config.get("reusable_strategies", {}))
+    # Resolve language-dependent data before normalization
+    author_patterns = resolve_author_regex_patterns(merged, config)
+    noise_words = resolve_noise_words(merged, config)
 
-    # Resolve noise words
-    merged["_noise_words"] = resolve_noise_words(merged, config)
-
-    # Default author fallback
-    merged["_default_author"] = merged.get("default_author") or default_profile.get("default_author")
-
-    # Set meta fields
-    merged["_site_key"] = site_key
-    merged["_domain"] = safe_domain(url)
-    merged["_url"] = url
-
-    # Final normalization (ensures lists, etc.)
     merged = normalize_profile(merged)
 
-    # Meta fields survive normalization (they are not standard keys)
+    # Inject all resolved metadata into the final config
     merged["_site_key"] = site_key
     merged["_domain"] = safe_domain(url)
     merged["_url"] = url
@@ -433,29 +449,93 @@ def get_site_config(url: str, html_sample: str = "", config: Dict[str, Any] = No
     merged["_global_meta_extraction"] = copy.deepcopy(config.get("global", {}).get("meta_extraction", {}))
     merged["_global_text_rules"] = copy.deepcopy(config.get("global", {}).get("text_rules", {}))
     merged["_reusable_strategies"] = copy.deepcopy(config.get("reusable_strategies", {}))
-    merged["_noise_words"] = resolve_noise_words(merged, config)
+    merged["_noise_words"] = noise_words
+    merged["_author_regex_patterns"] = author_patterns
 
     return merged
 
 
 # =====================================================
-# Loader
+# Loader — monolithic YAML
 # =====================================================
 
 def load_config(path: str) -> Dict[str, Any]:
-    """Load and normalize a YAML configuration file."""
+    """Load and normalize a monolithic YAML configuration file."""
     if not path:
+        logger.error("[ERROR] Config path is empty")
         raise ValueError("Config path is empty")
     if not os.path.exists(path):
+        logger.error(f"[ERROR] Config file not found: {path}")
         raise FileNotFoundError(f"Config file not found: {path}")
 
+    logger.info(f"[INFO] Loading monolithic config from {path}")
     with open(path, "r", encoding="utf-8") as f:
         raw = yaml.safe_load(f) or {}
 
     if not isinstance(raw, dict):
+        logger.error("[ERROR] YAML root must be a mapping/object")
         raise ValueError("YAML root must be a mapping/object")
 
     return normalize_config(extract_root_config(raw))
+
+
+# =====================================================
+# Modular config loader — universal.yaml + includes
+# =====================================================
+
+def load_modular_config(universal_path: str) -> Dict[str, Any]:
+    """
+    Load a modular configuration from universal.yaml + included files.
+    """
+    if not os.path.exists(universal_path):
+        logger.error(f"[ERROR] Universal config not found: {universal_path}")
+        raise FileNotFoundError(f"Universal config not found: {universal_path}")
+    
+    config_dir = os.path.dirname(os.path.abspath(universal_path))
+    logger.info(f"[INFO] Loading modular config from {universal_path}")
+    
+    with open(universal_path, "r", encoding="utf-8") as f:
+        universal = yaml.safe_load(f) or {}
+    
+    if not isinstance(universal, dict):
+        logger.error("[ERROR] universal.yaml root must be a mapping")
+        raise ValueError("universal.yaml root must be a mapping")
+    
+    includes = clean_list(universal.get("includes", []))
+    
+    if not includes:
+        logger.error("[ERROR] No 'includes' found in universal.yaml")
+        raise ValueError("No 'includes' found in universal.yaml — nothing to load")
+    
+    result = copy.deepcopy(universal)
+    result.pop("includes", None)
+    
+    for include_file in includes:
+        include_path = os.path.join(config_dir, include_file)
+        
+        if not os.path.exists(include_path):
+            msg = f"Included file not found, skipping: {include_path}"
+            print(f"[WARN] {msg}")
+            logger.warning(f"[WARN] {msg}")
+            continue
+        
+        with open(include_path, "r", encoding="utf-8") as f:
+            included_data = yaml.safe_load(f) or {}
+        
+        if not isinstance(included_data, dict):
+            msg = f"{include_file} is not a mapping, skipping"
+            print(f"[WARN] {msg}")
+            logger.warning(f"[WARN] {msg}")
+            continue
+        
+        msg = f"Loaded: {include_file}"
+        print(f"  [OK] {msg}")
+        logger.info(f"[OK] {msg}")
+        result = deep_merge(result, included_data)
+    
+    normalized = normalize_config(extract_root_config(result))
+    logger.info(f"[OK] Modular config loaded successfully: {len(result.get('sites', {}))} sites")
+    return normalized
 
 
 # =====================================================
@@ -464,13 +544,21 @@ def load_config(path: str) -> Dict[str, Any]:
 
 @dataclass
 class ConfigLoader:
-    """Reusable config loader wrapper."""
+    """Reusable config loader wrapper — supports both monolithic and modular."""
 
     path: str
     config: Dict[str, Any] = field(default_factory=dict)
 
     def load(self) -> Dict[str, Any]:
-        self.config = load_config(self.path)
+        with open(self.path, "r", encoding="utf-8") as f:
+            header = yaml.safe_load(f) or {}
+        
+        if "includes" in header:
+            logger.info("[INFO] Auto-detected MODULAR config")
+            self.config = load_modular_config(self.path)
+        else:
+            logger.info("[INFO] Auto-detected MONOLITHIC config")
+            self.config = load_config(self.path)
         return self.config
 
     def reload(self) -> Dict[str, Any]:
@@ -492,6 +580,12 @@ class ConfigLoader:
 # =====================================================
 
 def load_yaml_config(path: str) -> Dict[str, Any]:
+    """Load config — auto-detects monolithic vs modular."""
+    with open(path, "r", encoding="utf-8") as f:
+        header = yaml.safe_load(f) or {}
+    
+    if "includes" in header:
+        return load_modular_config(path)
     return load_config(path)
 
 
@@ -503,12 +597,16 @@ def get_config(url: str, config: Dict[str, Any], html_sample: str = "") -> Dict[
     return get_site_config(url, html_sample, config)
 
 
+def load_social_config() -> Dict[str, Any]:
+    """Load modular social media configuration."""
+    return load_modular_config("social/config/social.yaml")
+
 # =====================================================
-# CLI smoke test
+# CLI smoke test — auto-detects modular vs monolithic
 # =====================================================
 if __name__ == "__main__":
-    cfg_path = 'Universalconfig.yaml'
-    test_url = 'https://www.ozodi.org/'
+    cfg_path = 'universal.yaml'
+    test_url = 'http://khovar.tj/'
 
     if len(sys.argv) >= 2:
         cfg_path = sys.argv[1]
@@ -518,21 +616,69 @@ if __name__ == "__main__":
     print(f"Config: {cfg_path}")
     print(f"URL: {test_url}")
 
-    cfg = load_config(cfg_path)
+    with open(cfg_path, "r", encoding="utf-8") as f:
+        header = yaml.safe_load(f) or {}
+
+    if "includes" in header:
+        print("Mode: MODULAR")
+        cfg = load_modular_config(cfg_path)
+    else:
+        print("Mode: MONOLITHIC")
+        cfg = load_config(cfg_path)
+
     site_key = get_site_key(test_url, cfg)
     site_cfg = get_site_config(test_url, "", cfg)
 
-    print("SITE_KEY:", site_key)
-    print(json.dumps({
-        "site_key": site_key,
-        "domain": site_cfg.get("_domain"),
-        "start_url": site_cfg.get("start_url"),
-        "title_selectors": site_cfg.get("title_selectors"),
-        "rubric_strategy": site_cfg.get("rubric_strategy"),
-        "author_strategy": site_cfg.get("author_strategy"),
-        "noise_words_sample": site_cfg.get("_noise_words", [])[:10],
-        "has_text_rules": bool(site_cfg.get("_global_text_rules"))
-    }, ensure_ascii=False, indent=2))
+    print(f"\nSITE_KEY: {site_key}")
+    try:
+        print(json.dumps({
+            "site_key": site_key,
+            "domain": site_cfg.get("_domain"),
+            "default_language": site_cfg.get("default_language"),
+            "default_author": site_cfg.get("_default_author"),
+            "start_url": site_cfg.get("start_url"),
+            "title_selectors": site_cfg.get("title_selectors", [])[:3],
+            "rubric_strategy": site_cfg.get("rubric_strategy"),
+            "author_strategy": site_cfg.get("author_strategy"),
+            "noise_words_sample": site_cfg.get("_noise_words", [])[:10],
+            "author_regex_patterns_count": len(site_cfg.get("_author_regex_patterns", [])),
+            "has_text_rules": bool(site_cfg.get("_global_text_rules")),
+            "has_reusable_strategies": bool(site_cfg.get("_reusable_strategies")),
+        }, ensure_ascii=False, indent=2))
+    except UnicodeEncodeError:
+        print(json.dumps({
+            "site_key": site_key,
+            "domain": site_cfg.get("_domain"),
+            "default_language": site_cfg.get("default_language"),
+            "default_author": site_cfg.get("_default_author"),
+            "start_url": site_cfg.get("start_url"),
+            "title_selectors": site_cfg.get("title_selectors", [])[:3],
+            "rubric_strategy": site_cfg.get("rubric_strategy"),
+            "author_strategy": site_cfg.get("author_strategy"),
+            "noise_words_sample": site_cfg.get("_noise_words", [])[:10],
+            "author_regex_patterns_count": len(site_cfg.get("_author_regex_patterns", [])),
+            "has_text_rules": bool(site_cfg.get("_global_text_rules")),
+            "has_reusable_strategies": bool(site_cfg.get("_reusable_strategies")),
+        }, ensure_ascii=True, indent=2))
+
+    lang = site_cfg.get("default_language", "unknown")
+    if lang and lang in cfg.get("languages", {}):
+        lang_pkg = cfg["languages"][lang]
+        print(f"\nLanguage package '{lang}':")
+        print(f"  noise_words: {len(lang_pkg.get('noise_words', []))} words")
+        print(f"  stopwords: {len(lang_pkg.get('stopwords', []))} words")
+        if lang_pkg.get("date_locale"):
+            print(f"  date_locale: {len(lang_pkg['date_locale'])} months")
+        if lang_pkg.get("author_regex"):
+            print(f"  author_regex: {len(lang_pkg['author_regex'])} patterns")
+        if lang_pkg.get("category_url_patterns"):
+            print(f"  category_url_patterns: {len(lang_pkg['category_url_patterns'])} patterns")
     
-#python config\loader.py Universalconfig.yaml https://www.ozodi.org/  
-#python config\loader.py Universalconfig.yaml https://shahrikazan.ru/
+    # Show resolved author regex patterns
+    author_patterns = site_cfg.get("_author_regex_patterns", [])
+    if author_patterns:
+        print(f"\nResolved author_regex patterns: {len(author_patterns)}")
+        for i, pat in enumerate(author_patterns, 1):
+            print(f"  {i}. {pat[:100]}...")
+    else:
+        print("\nResolved author_regex patterns: NONE — check languages.yaml!")

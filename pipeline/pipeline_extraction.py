@@ -1,4 +1,4 @@
-# engine\engine_v65_part2_extraction.py
+# pipeline/pipeline_extraction.py
 from __future__ import annotations
 import sys
 import os
@@ -17,7 +17,7 @@ from urllib.parse import urlparse
 from bs4 import BeautifulSoup, Tag
 from tqdm import tqdm
 
-# Импорты из Part 1 (ядро + все утилиты)
+# Imports from Part 1 (core + all utilities)
 from pipeline.pipeline_core import (
     PipelineEngine,
     abs_url,
@@ -36,18 +36,23 @@ from pipeline.pipeline_core import (
     now_iso,
 )
 
+from logger_setup import get_file_logger
+
+# Initialize file-only logger
+logger = get_file_logger("pipeline_extraction", "logs/pipeline_extraction.log")
+
 # =====================================================
 # Extraction Engine
 # =====================================================
 
 class ExtractionEngine(PipelineEngine):
     """
-    Наследует всю инфраструктуру Part1 (загрузка конфига, HTTP, discovery…)
-    и добавляет глубокое извлечение полей статьи.
+    Inherits all Part1 infrastructure (config loading, HTTP, discovery...)
+    and adds deep extraction of article fields.
     """
 
     # -------------------------------------------------
-    # JSON‑LD / author helpers
+    # JSON-LD / author helpers
     # -------------------------------------------------
 
     def jsonld_to_author(self, data: Any) -> Optional[str]:
@@ -91,7 +96,7 @@ class ExtractionEngine(PipelineEngine):
     def extract_author_regex(self, soup: BeautifulSoup, site_cfg: Dict[str, Any]) -> Optional[str]:
         global_text = clean_text(soup.get_text(" ", strip=True))
         patterns = site_cfg.get("author_regex_patterns") or [
-            r"(?:Автор|By|От\s+автора|Муаллиф|Подготовил(?:а)?|Матн\s+муаллиф)\s*[:\-]?\s*([A-Za-zА-Яа-яЁёӨөҮүҚқҒғҲҳӢӣЪъІіЇї'’\-\.\s]{2,120})",
+            r"(?:Author|By|From\s+the\s+author|Author|Prepared(?:by)?|Text\s+author)\s*[:\-]?\s*([A-Za-zА-Яа-яЁёӨөҮүҚқҒғҲҳӢӣЪъІіЇї'’\-\.\s]{2,120})",
             r"(?:written\s+by|reported\s+by)\s*[:\-]?\s*([A-Za-zА-Яа-яЁёӨөҮүҚқҒғҲҳӢӣЪъІіЇї'’\-\.\s]{2,120})",
         ]
         for pat in patterns:
@@ -118,7 +123,7 @@ class ExtractionEngine(PipelineEngine):
 
         def meta_tag() -> Optional[str]:
             for sel in site_cfg.get("author_selectors", []):
-                # используем безопасный select_one
+                # use safe select_one
                 try:
                     el = self._safe_select_one(soup, sel)
                 except Exception:
@@ -158,7 +163,7 @@ class ExtractionEngine(PipelineEngine):
                 txt = clean_text(el.get_text(" ", strip=True))
                 if not txt:
                     continue
-                if "author" in style or "byline" in style or re.search(r"author|автор|муаллиф", txt, re.I):
+                if "author" in style or "byline" in style or re.search(r"author|author|author", txt, re.I):
                     return txt
             return None
 
@@ -235,7 +240,7 @@ class ExtractionEngine(PipelineEngine):
                 val = fn()
                 if val:
                     val = clean_text(val)
-                    val = re.sub(r"^(Автор|By|От автора|Муаллиф)\s*[:\-]?\s*", "", val, flags=re.I)
+                    val = re.sub(r"^(Author|By|From the author|Author)\s*[:\-]?\s*", "", val, flags=re.I)
                     val = clean_text(val)
                     if val:
                         return val
@@ -266,7 +271,7 @@ class ExtractionEngine(PipelineEngine):
         return None
 
     # -------------------------------------------------
-    # Date (с поддержкой locale_map)
+    # Date (with locale_map support)
     # -------------------------------------------------
     def extract_date(
         self,
@@ -275,7 +280,7 @@ class ExtractionEngine(PipelineEngine):
         locale_map: Optional[Dict[str, str]] = None,
     ) -> Optional[str]:
         """
-        Парсит дату, предварительно применяя locale_map (например, таджикские месяцы).
+        Parse date, applying locale_map first.
         """
         for sel in site_cfg.get("date_selectors", []):
             try:
@@ -291,13 +296,22 @@ class ExtractionEngine(PipelineEngine):
         return None
 
     # -------------------------------------------------
-    # Category (со стратегией url_path_parsing)
+    # Category (with url_path_parsing strategy)
     # -------------------------------------------------
     def extract_category(self, soup: BeautifulSoup, url: str, site_cfg: Dict[str, Any]) -> Optional[str]:
         strategies = site_cfg.get("category_strategy") or []
+        
         if "url_path_parsing" in strategies:
+            # Patterns from reusable_strategies (global)
             patterns = self.root_cfg.get("reusable_strategies", {}).get(
                 "category_sources", {}).get("url_path_parsing", {}).get("patterns", [])
+            
+            # Additional language-specific patterns
+            lang = site_cfg.get("default_language")
+            if lang:
+                lang_patterns = self.root_cfg.get("languages", {}).get(lang, {}).get("category_url_patterns", [])
+                patterns = list(set(patterns + lang_patterns))
+            
             for pattern in patterns:
                 m = re.search(pattern, url)
                 if m:
@@ -473,8 +487,8 @@ class ExtractionEngine(PipelineEngine):
         locale_map: Optional[Dict[str, str]] = None,
     ) -> Dict[str, Any]:
         """
-        Собирает метаданные страницы.
-        locale_map передаётся в extract_date для учёта таджикских месяцев.
+        Collect page metadata.
+        locale_map is passed to extract_date for month name support.
         """
         return {
             "title": self.extract_title(soup, site_cfg),
@@ -620,7 +634,7 @@ class ExtractionEngine(PipelineEngine):
 
         with ThreadPoolExecutor(max_workers=max_threads) as executor:
             futures = {executor.submit(worker, u): u for u in candidates.keys()}
-            for f in tqdm(as_completed(futures), total=len(futures), desc="Скачивание статей"):
+            for f in tqdm(as_completed(futures), total=len(futures), desc="[EXTRACT] Downloading articles"):
                 try:
                     data = f.result()
                     if not data:
@@ -670,7 +684,7 @@ class ExtractionEngine(PipelineEngine):
     ) -> Dict[str, Any]:
         limits = self.limits_cfg()
         if max_items_override is not None:
-            limits["max_items"] = max_items_override   # принудительный лимит
+            limits["max_items"] = max_items_override   # forced limit
 
         output_jsonl = output_jsonl or self.global_cfg().get("output_jsonl", "items_v6_5.jsonl")
         output_json = output_json or self.global_cfg().get("output_json", "items_v6_5.json")
@@ -680,20 +694,29 @@ class ExtractionEngine(PipelineEngine):
         except Exception:
             pass
 
-        print(f"Старт: {start_url}")
-        print(f"Профиль: {self.site_key(start_url)}")
+        logger.info(f"Pipeline started: {start_url}")
+        print(f"[START] URL: {start_url}")
+        print(f"[PROFILE] Site key: {self.site_key(start_url)}")
 
         candidates = self.detect_page_candidates(start_url, context_rubrics=context_rubrics)
-        print(f"Найдено кандидатов: {len(candidates)}")
+        logger.info(f"Candidates found: {len(candidates)}")
+        print(f"[CANDIDATES] Found: {len(candidates)}")
 
         items = self.scrape_items(candidates, output_jsonl)
-        print(f"Уникальных items: {len(items)}")
+        logger.info(f"Unique items extracted: {len(items)}")
+        print(f"[ITEMS] Unique: {len(items)}")
 
         payload = self.save_items_json(items, output_json)
 
-        print(f"✅ JSONL: {output_jsonl}")
-        print(f"✅ JSON:  {output_json}")
-        return payload
+        logger.info(f"Output JSONL: {output_jsonl}")
+        logger.info(f"Output JSON: {output_json}")
+        print(f"[OK] JSONL: {output_jsonl}")
+        print(f"[OK] JSON:  {output_json}")
+        return {
+            **payload,
+            "output_jsonl": output_jsonl,
+            "output_json": output_json,
+        }
 
 
 # =====================================================
@@ -702,13 +725,24 @@ class ExtractionEngine(PipelineEngine):
 
 def run(
     start_url: str,
-    yaml_path: str = "Universalconfig.yaml",
-    output_jsonl: str = "items_v6_5.jsonl",
-    output_json: str = "items_v6_5.json",
+    yaml_path: str = "config/universal.yaml",
+    output_jsonl: Optional[str] = None,
+    output_json: Optional[str] = None,
     context_rubrics: Optional[Iterable[str]] = None,
     max_items: Optional[int] = None,
 ) -> Dict[str, Any]:
     engine = ExtractionEngine(yaml_path=yaml_path)
+    
+    # Auto-generate output filenames from site_key + date
+    if output_jsonl is None or output_json is None:
+        site_key = engine.site_key(start_url)
+        date_str = time.strftime("%Y-%m-%d")
+        os.makedirs("output", exist_ok=True) 
+        if output_jsonl is None:
+            output_jsonl = f"output/{site_key}_{date_str}_articles.jsonl"
+        if output_json is None:
+            output_json = f"output/{site_key}_{date_str}_articles.json"
+    
     return engine.run_full_pipeline(
         start_url=start_url,
         output_jsonl=output_jsonl,
@@ -722,14 +756,12 @@ if __name__ == "__main__":
     import sys
     import json
 
-    # Значения по умолчанию
-    yaml_path = "Universalconfig.yaml"
-    start = "https://www.ozodi.org/"
-    out_jsonl = "items_v6_5.jsonl"
-    out_json = "items_v6_5.json"
+    yaml_path = "config/universal.yaml"
+    start = "https://khovar.tj/"
+    out_jsonl = None   
+    out_json = None    
     max_items = None
 
-    # Переопределяем из аргументов командной строки
     if len(sys.argv) >= 2:
         yaml_path = sys.argv[1]
     if len(sys.argv) >= 3:
@@ -742,14 +774,12 @@ if __name__ == "__main__":
         try:
             max_items = int(sys.argv[5])
         except ValueError:
-            print("Неверный формат максимального количества статей. Игнорируем.")
+            print("[WARN] Invalid max items format. Ignoring.")
 
     print(f"Config: {yaml_path}")
     print(f"URL: {start}")
-    print(f"Output JSONL: {out_jsonl}")
-    print(f"Output JSON: {out_json}")
     if max_items:
-        print(f"Лимит статей: {max_items}")
+        print(f"Max items: {max_items}")
 
     result = run(
         start_url=start,
@@ -758,7 +788,5 @@ if __name__ == "__main__":
         output_json=out_json,
         max_items=max_items,
     )
-    print(json.dumps(result, ensure_ascii=False, indent=2))
-
-    
-#python engine\engine_v65_part2_extraction.py Universalconfig.yaml https://www.ozodi.org/ items_v6_5.jsonl items_v6_5.json
+    print(f"Output JSONL: {result.get('output_jsonl', 'N/A')}")
+    print(f"Output JSON:  {result.get('output_json', 'N/A')}")

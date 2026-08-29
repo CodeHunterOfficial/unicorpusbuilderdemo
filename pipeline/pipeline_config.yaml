@@ -1,7 +1,7 @@
-#Universalconfig.yaml
+# Universal config.yaml
 version: "1.0"
 name: "optimal_pipeline"
-description: "Universal configurable scraper for multilingual news/listing/article sites – fully extended with Tajik sites, date locales, URL category parsing, and per‑site card exclusions"
+description: "Universal configurable scraper for multilingual news/listing/article sites"
 site_count_expected: 28
 
 global:
@@ -57,7 +57,6 @@ global:
       - "/signup"
       - "/signin"
       - "/register"
-      # ↓ новые фильтры
       - "/attachments/"
       - "/store/"
       - ".png"
@@ -80,7 +79,6 @@ global:
       fallback: "unknown"
 
     noise_words:
-      # --- Универсальные ---
       common:
         - "menu"
         - "search"
@@ -93,69 +91,63 @@ global:
         - "skip"
         - "close"
 
-      # --- Русский ---
       ru:
-        - "подписаться"
-        - "войти"
-        - "регистрация"
-        - "поделиться"
-        - "реклама"
-        - "куки"
+        - "subscribe"
+        - "sign in"
+        - "registration"
+        - "share"
+        - "advertisement"
+        - "cookies"
         - "cookie"
-        - "меню"
-        - "главная"
-        - "далее"
-        - "читать далее"
-        - "комментарии"
+        - "menu"
+        - "home"
+        - "next"
+        - "read more"
+        - "comments"
 
-      # --- Татарский ---
       tt:
-        - "язылу"
-        - "керү"
-        - "теркәлү"
-        - "уртаклашу"
-        - "реклама"
-        - "меню"
-        - "баш бит"
-        - "алга"
-        - "тулырак уку"
+        - "subscribe"
+        - "login"
+        - "registration"
+        - "share"
+        - "advertisement"
+        - "menu"
+        - "home page"
+        - "next"
+        - "read more"
 
-      # --- Башкирский ---
       ba:
-        - "теркәлергә"
-        - "инеү"
-        - "яҙылыу"
-        - "уртаҡлашыу"
-        - "реклама"
-        - "меню"
-        - "төп бит"
-        - "артабан"
+        - "register"
+        - "login"
+        - "subscribe"
+        - "share"
+        - "advertisement"
+        - "menu"
+        - "home page"
+        - "next"
 
-      # --- Таджикский ---
       tg:
-        - "обуна"
-        - "ворид шудан"
-        - "сабти ном"
-        - "мубодила"
-        - "таблиғ"
-        - "меню"
-        - "саҳифаи асосӣ"
-        - "бештар"
-        - "идома"
+        - "subscribe"
+        - "login"
+        - "registration"
+        - "share"
+        - "advertisement"
+        - "menu"
+        - "home page"
+        - "more"
+        - "continue"
 
-      # --- Узбекский ---
       uz:
-        - "obuna"
-        - "kirish"
-        - "ro'yxatdan o'tish"
-        - "ulashish"
-        - "reklama"
-        - "menyu"
-        - "bosh sahifa"
-        - "yana"
-        - "davomi"
+        - "subscribe"
+        - "login"
+        - "registration"
+        - "share"
+        - "advertisement"
+        - "menu"
+        - "home page"
+        - "more"
+        - "continuation"
 
-      # --- Английский ---
       en:
         - "subscribe"
         - "sign in"
@@ -171,38 +163,38 @@ global:
       enabled: true
       per_language: true
       ru:
-        - "и"
-        - "в"
-        - "на"
-        - "с"
-        - "по"
-        - "что"
-        - "это"
-        - "как"
-        - "к"
-        - "из"
+        - "and"
+        - "in"
+        - "on"
+        - "with"
+        - "by"
+        - "what"
+        - "this"
+        - "how"
+        - "to"
+        - "from"
       tt:
-        - "һәм"
-        - "бу"
-        - "белән"
-        - "өчен"
-        - "да"
+        - "and"
+        - "this"
+        - "with"
+        - "for"
+        - "also"
       ba:
-        - "һәм"
-        - "ул"
-        - "менән"
-        - "өсөн"
+        - "and"
+        - "he"
+        - "with"
+        - "for"
       tg:
-        - "ва"
-        - "дар"
-        - "аз"
-        - "бо"
-        - "ки"
+        - "and"
+        - "in"
+        - "from"
+        - "with"
+        - "that"
       uz:
-        - "va"
-        - "bu"
-        - "uchun"
-        - "ham"
+        - "and"
+        - "this"
+        - "for"
+        - "also"
       en:
         - "the"
         - "is"
@@ -219,7 +211,7 @@ global:
 
     patterns:
       ui_patterns:
-        - "читать.*"
+        - "read.*"
         - "read.*"
         - "show.*"
         - "load.*"
@@ -377,7 +369,7 @@ reusable_strategies:
     regex_in_content:
       enabled: true
       patterns:
-        - '(?:Автор|By|От\\s+автора|Муаллиф|Подготовил(?:а)?|Матн\\s+муаллиф)\\s*[:\\-]?\\s*([A-Za-zА-Яа-яЁёӨөҮүҚқҒғҲҳӢӣЪъІіЇї\\''’\\-\\.\\s]{2,120})'
+        - '(?:Author|By|From\\s+the\\s+author|Author|Prepared(?:by)?|Text\\s+author)\\s*[:\\-]?\\s*([A-Za-zА-Яа-яЁёӨөҮүҚқҒғҲҳӢӣЪъІіЇї\\''’\\-\\.\\s]{2,120})'
         - '(?:written\\s+by|reported\\s+by)\\s*[:\\-]?\\s*([A-Za-zА-Яа-яЁёӨөҮүҚқҒғҲҳӢӣЪъІіЇї\\''’\\-\\.\\s]{2,120})'
     json_ld_simple:
       enabled: true
@@ -400,18 +392,18 @@ reusable_strategies:
 
   date_locale:
     tajik_months:
-      "январ": "January"
-      "феврал": "February"
-      "март": "March"
-      "апрел": "April"
-      "май": "May"
-      "июн": "June"
-      "июл": "July"
-      "август": "August"
-      "сентябр": "September"
-      "октябр": "October"
-      "ноябр": "November"
-      "декабр": "December"
+      "January": "January"
+      "February": "February"
+      "March": "March"
+      "April": "April"
+      "May": "May"
+      "June": "June"
+      "July": "July"
+      "August": "August"
+      "September": "September"
+      "October": "October"
+      "November": "November"
+      "December": "December"
 
   category_sources:
     url_path_parsing:
@@ -420,8 +412,8 @@ reusable_strategies:
         - "/category/([^/]+)"
         - "/rubric/([^/]+)"
         - "/articles/([^/]+)/\\d{4}"
-        - "/bahsho/([^/]+)/"
-        - "/prezidenti-t/([^/]+)/"
+        - "/sections/([^/]+)/"
+        - "/president-t/([^/]+)/"
         - "/uato/([^/]+)/"
         - "/alasao/([^/]+)/"
         - "/news/([^/]+)/"
@@ -430,7 +422,7 @@ sites:
   tatar-inform:
     match:
       - "tatar-inform.tatar"
-    default_author: "Татар-информ"
+    default_author: "Tatar-inform"
     default_language: "tt"
     noise_language: ["common", "tt"]
     rubric_strategy:
@@ -480,7 +472,7 @@ sites:
     category_selectors:
       - "a.main__rubric"
       - 'meta[property="article:section"]'
-      - 'meta[name="section"]'    
+      - 'meta[name="section"]'
     category_strategy:
       - "meta_tag"
     content_selectors:
@@ -590,8 +582,7 @@ sites:
       - "a.load-more"
       - "a.show-more"
       - "a.pagination__next"
-      - "a:contains('Киләсе')"
-      - "a:contains('Следующая')"
+      - "a:contains('Next')"
       - "a.next"
       - "a[rel='next']"
       - "a[href*='page=']"
@@ -639,7 +630,7 @@ sites:
     match:
       - "beznen.ru"
     default_language: "tt"
-    default_author: "Безнең гәҗит"
+    default_author: "Beznen gazit"
     noise_language: ["common", "tt"]
     rubric_strategy:
       - "menu_scraping"
@@ -703,7 +694,7 @@ sites:
     match:
       - "intertat.tatar"
     default_language: "tt"
-    default_author: "Интертат"
+    default_author: "Intertat"
     noise_language: ["common", "tt"]
     rubric_strategy:
       - "menu_scraping"
@@ -726,8 +717,7 @@ sites:
       - "a[href*='/news/']"
     pagination_selectors:
       - "a.next"
-      - "a:contains('Киләсе')"
-      - "a:contains('Следующая')"
+      - "a:contains('Next')"
       - "link[rel='next']"
       - "ul.pagination a"
       - "a[href*='page=']"
@@ -771,7 +761,7 @@ sites:
     match:
       - "kazanutlary.ru"
     default_language: "tt"
-    default_author: "Казан утлары"
+    default_author: "Kazan utlary"
     noise_language: ["common", "tt"]
     rubric_strategy:
       - "menu_scraping"
@@ -791,7 +781,7 @@ sites:
     article_link_selectors:
       - "a.news-list__link"
     pagination_selectors:
-      - "div.pagination a:contains('Киләсе бит')"
+      - "div.pagination a:contains('Next page')"
       - "div.pagination a:contains('→')"
       - "a[rel='next']"
       - "link[rel='next']"
@@ -890,7 +880,7 @@ sites:
     match:
       - "nurlat-tat.ru"
     default_language: "tt"
-    default_author: "Нурлат-информ"
+    default_author: "Nurlat-inform"
     noise_language: ["common", "tt"]
     rubric_strategy:
       - "auto_detect_multi"
@@ -918,8 +908,7 @@ sites:
       - "a[href*='/news/']"
     pagination_selectors:
       - "ul.pagination a"
-      - "a:contains('Киләсе')"
-      - "a:contains('Следующая')"
+      - "a:contains('Next')"
       - "a.next"
       - "link[rel='next']"
       - "a[href*='/page/']"
@@ -964,7 +953,7 @@ sites:
     match:
       - "syuyumbike.ru"
     default_language: "tt"
-    default_author: "Сююмбике"
+    default_author: "Syuyumbike"
     noise_language: ["common", "tt"]
     rubric_strategy:
       - "menu_scraping"
@@ -986,7 +975,7 @@ sites:
       - "a[href*='/news/']"
     pagination_selectors:
       - "ul.pagination a"
-      - "a:contains('Киләсе бит')"
+      - "a:contains('Next page')"
       - "a:contains('❯')"
       - "a.next"
       - "link[rel='next']"
@@ -1025,11 +1014,11 @@ sites:
       - "/news/rubric/list/"
       - "/page/"
       - "/tag/"
-  
+
   tuganaylar:
     match:
       - "tuganaylar.ru"
-    default_author: "Туганайлар"
+    default_author: "Tuganaylar"
     default_language: "tt"
     noise_language: ["common", "tt"]
     rubric_strategy:
@@ -1053,8 +1042,7 @@ sites:
     pagination_selectors:
       - "a.next"
       - "link[rel='next']"
-      - "a:contains('Киләсе')"
-      - "a:contains('Следующая')"
+      - "a:contains('Next')"
       - "a[href*='/page/']"
     title_selectors:
       - "h1"
@@ -1106,8 +1094,7 @@ sites:
     article_link_selectors:
       - "a.list__link"
     pagination_selectors:
-      - "a:contains('Киләсе')"
-      - "a:contains('Следующая')"
+      - "a:contains('Next')"
       - "a[rel='next']"
       - "link[rel='next']"
       - "a[href*='/page/']"
@@ -1155,7 +1142,7 @@ sites:
   almet-rt:
     match:
       - "almet-rt.ru"
-    default_author: "Туганайлар"
+    default_author: "Tuganaylar"
     default_language: "tt"
     noise_language: ["common", "tt"]
     cookie_lang: "tt"
@@ -1180,8 +1167,7 @@ sites:
     pagination_selectors:
       - "a.next"
       - "link[rel='next']"
-      - "a:contains('Киләсе')"
-      - "a:contains('Следующая')"
+      - "a:contains('Next')"
       - "a[href*='/page/']"
     title_selectors:
       - "h1"
@@ -1240,8 +1226,7 @@ sites:
       - "a.btn.link-showMore"
       - "a.load-more"
       - "a.show-more"
-      - "a:contains('Күберәк')"
-      - "a:contains('Больше')"
+      - "a:contains('More')"
       - "a[rel='next']"
       - "a[href*='p=']"
     title_selectors:
@@ -1278,7 +1263,7 @@ sites:
     article_url_filters:
       - "/a/"
     article_url_excludes: []
-    
+
   mamadysh-rt:
     match:
       - "mamadysh-rt.ru"
@@ -1369,7 +1354,6 @@ sites:
       - "a.next.page-numbers"
       - "ul.page-numbers a"
       - "a.page-numbers:not(.prev):not(.next)"
-      - "a:contains('Следующая')"
       - "a:contains('Next')"
       - "a.next"
       - "a[rel='next']"
@@ -1590,7 +1574,7 @@ sites:
       - "a[href]"
     pagination_selectors:
       - "div.pagination a.next"
-      - "div.pagination a:contains('Саҳифаи оянда')"
+      - "div.pagination a:contains('Next page')"
       - "a.next"
       - "a[rel='next']"
       - "a[href*='/page/']"
@@ -1705,7 +1689,7 @@ sites:
       - "ozodi.org"
     amp_mode: "prefix"
     default_language: "tg"
-    noise_language: ["common", "tg"]    
+    noise_language: ["common", "tg"]
     rubric_strategy:
       - "menu_scraping"
     author_strategy:
@@ -1786,7 +1770,7 @@ sites:
       - "nav.navigation a"
       - "a.next"
       - "a[rel='next']"
-      - "a:contains('Следующая')"
+      - "a:contains('Next')"
       - "a[href*='paged=']"
       - "a[href*='page=']"
     title_selectors:
@@ -1841,8 +1825,8 @@ sites:
       - "default_fallback"
     rubric_selectors:
       - "nav.side-box.side-blue.mob-menu a[href]"
-      - "nav a[href*='/bahsho/']"
-      - "nav a[href*='/prezidenti-t/']"
+      - "nav a[href*='/sections/']"
+      - "nav a[href*='/president-t/']"
       - "nav a[href*='/uato/']"
       - "nav a[href*='/alasao/']"
     card_selectors:
@@ -1850,8 +1834,8 @@ sites:
       - "div.news-item"
     article_link_selectors:
       - "a.news-item-title"
-      - "div.news-item a[href*='/bahsho/']"
-      - "div.news-item a[href*='/prezidenti-t/']"
+      - "div.news-item a[href*='/sections/']"
+      - "div.news-item a[href*='/president-t/']"
       - "div.news-item a[href*='/uato/']"
       - "div.news-item a[href*='/alasao/']"
     pagination_selectors:
@@ -1890,16 +1874,16 @@ sites:
       - ".widget"
       - ".sidebar"
     article_url_filters:
-      - "/bahsho/"
-      - "/prezidenti-t/"
+      - "/sections/"
+      - "/president-t/"
       - "/uato/"
       - "/alasao/"
     article_url_excludes:
-      - "/obuna/"
+      - "/subscribe/"
       - "/pdf/"
-      - "/suratguzorish.html"
-      - "/oi-holii-kor"
-      - "/dar-borai-mo"
+      - "/photo-report.html"
+      - "/work-vacancies"
+      - "/about-us"
       - "/page/"
     date_locale: "tajik_months"
 
@@ -1930,7 +1914,6 @@ sites:
       - "a.next.page-numbers"
       - "ul.page-numbers a"
       - "a.page-numbers:not(.prev):not(.next)"
-      - "a:contains('Следующая')"
       - "a:contains('Next')"
       - "a.next"
       - "a[rel='next']"
@@ -2089,7 +2072,7 @@ sites:
       - "a.load-more"
       - "a.show-more"
       - "a.pagination__next"
-      - "a:contains('Күберәк')"
+      - "a:contains('More')"
       - "a.next"
       - "a[rel='next']"
       - "a[href*='page=']"
@@ -2162,7 +2145,7 @@ sites:
       - "a.load-more"
       - "a.show-more"
       - "a.pagination__next"
-      - "a:contains('Күберәк')"
+      - "a:contains('More')"
       - "a.next"
       - "a[rel='next']"
       - "a[href*='page=']"
@@ -2210,7 +2193,7 @@ sites:
     match:
       - "ria.ru"
     default_language: "ru"
-    noise_language: ["common", "ru"]    
+    noise_language: ["common", "ru"]
     rubric_strategy:
       - "menu_scraping"
     rubric_selectors:
@@ -2279,7 +2262,6 @@ sites:
       - "/search/"
       - "/person/"
       - "/specialprojects/"
-
 
   mk:
     match:
@@ -2369,7 +2351,7 @@ sites:
       - "/stories/daty/"
       - ".jpg"
       - ".png"
-      
+
 default_profile:
   default_author: null
   default_language: null
@@ -2378,16 +2360,12 @@ default_profile:
   verify_ssl: true
   noise_language: ["common", "ru"]
 
-  # ============================================================
-  # 🔍 АВТООПРЕДЕЛЕНИЕ СЕМЕЙСТВА САЙТА
-  # ============================================================
   auto_detect_family:
     enabled: true
     scan_pages: 3
     confidence_threshold: 2
     families:
-      
-      # --- Семейство 1: np-widget (Татар-информ, Туганайлар, Нурлат, Шахриказан, Ватаным) ---
+
       np_widget:
         indicators:
           - selector: "div.np-widget-rubric"
@@ -2461,8 +2439,7 @@ default_profile:
           pagination_selectors:
             - "ul.pagination a"
             - "a.next"
-            - "a:contains('Киләсе')"
-            - "a:contains('Следующая')"
+            - "a:contains('Next')"
             - "link[rel='next']"
             - "a[href*='/page/']"
             - "a[href*='page=']"
@@ -2487,7 +2464,6 @@ default_profile:
             - ".png"
             - ".pdf"
 
-      # --- Семейство 2: WordPress (sssr, mit, omuzgor, oila, khovar) ---
       wordpress:
         indicators:
           - selector: "div.entry-content"
@@ -2569,7 +2545,6 @@ default_profile:
             - ".png"
             - ".pdf"
 
-      # --- Семейство 3: RFE/RL (azatliq, ozodi) ---
       rferl:
         indicators:
           - selector: "ul.archive-list"
@@ -2622,7 +2597,6 @@ default_profile:
             - "/a/"
           article_url_excludes: []
 
-      # --- Семейство 4: Nuxt (yanshishma, akbuzat, alluki) ---
       nuxt:
         indicators:
           - selector: "script:contains('__NUXT__')"
@@ -2677,7 +2651,7 @@ default_profile:
           pagination_selectors:
             - "a.pagination__next"
             - "a.load-more"
-            - "a:contains('Күберәк')"
+            - "a:contains('More')"
             - "a[href*='page=']"
             - "a[href*='/page/']"
           article_url_filters:
@@ -2692,7 +2666,6 @@ default_profile:
             - ".jpg"
             - ".png"
 
-      # --- Семейство 5: Drupal (beznen) ---
       drupal:
         indicators:
           - selector: "div.article_node__content"
@@ -2740,10 +2713,6 @@ default_profile:
             - ".jpg"
             - ".png"
 
-  # ============================================================
-  # 📋 СТАНДАРТНЫЕ СЕЛЕКТОРЫ (если семейство не определено)
-  # ============================================================
-  
   title_selectors:
     - 'meta[property="og:title"]'
     - 'meta[name="twitter:title"]'

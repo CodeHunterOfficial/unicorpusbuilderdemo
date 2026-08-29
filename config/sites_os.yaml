@@ -1,0 +1,519 @@
+# config/sites_os.yaml
+# ============================================================
+# OSSETIAN SITES
+# ============================================================
+sites:
+
+  # ============================================================
+  # iryston.tv — Ossetian news & teleproject portal
+  # ============================================================
+  iryston:
+    match:
+      - "iryston.tv"
+    default_language: "os"
+    noise_language: ["common", "os"]
+    start_url: "https://iryston.tv/ir/sairag/"
+    rubric_strategy:
+      - "menu_scraping"
+      - "pattern_fallback"
+    author_strategy:
+      - "meta_tag"
+      - "class_selector"
+      - "json_ld_graph"
+      - "regex_in_content"
+      - "default_fallback"
+    rubric_selectors:
+      - "ul.menu__list a[href]"
+      - "a[href*='/ir/habaerttae']"
+      - "a[href*='/ir/iz-efira-os']"
+      - "a[href*='/ir/vsya-afisha-os']"
+      - "a[href='/ir/sairag']"
+    card_selectors:
+      - "div.news-item"
+      - "article.post"
+      - "div.teleproject-item"
+      - "div.news-item__img-block"
+    article_link_selectors:
+      - "a.news-item__title[href]"
+      - "a.news-item__img-block[href]"
+      - "h2.news-item__title a"
+      - "a[href*='/ir/']"
+    pagination_selectors:
+      - "link[rel='next']"
+      - "a.next"
+      - "a.page-numbers"
+      - "a[href*='/page/']"
+      - "a.loadmoreNews"
+      - "a.loadmoreEfir"
+    title_selectors:
+      - "h1.news-single__title"
+      - "h1.teleproject-single__title"
+      - 'meta[property="og:title"]'
+      - "title"
+    date_selectors:
+      - 'meta[property="article:published_time"]'
+      - ".news-single__date"
+      - ".teleproject-single__date"
+      - "time[datetime]"
+      - "time"
+    author_selectors:
+      - ".news-single__author a"
+      - ".teleproject-single__author a"
+      - 'meta[name="author"]'
+      - ".entry-author a"
+    category_selectors:
+      - 'meta[property="article:section"]'
+      - ".breadcrumb__item:nth-last-child(2) a"
+      - ".breadcrumb__item a"
+    content_selectors:
+      - ".content"
+      - ".teleproject-single__block .content"
+      - ".news-single__block"
+      - "article"
+      - "main"
+    remove_selectors:
+      - "script"
+      - "style"
+      - "noscript"
+      - "iframe"
+      - ".social-likes"
+      - ".evc-social-likes"
+      - ".share"
+      - ".banner"
+      - ".advertisement"
+      - "form"
+    article_url_filters:
+      - "/ir/"
+      - "/teleproject_release/"
+    article_url_excludes:
+      - "/page/"
+      - "/category/"
+      - "/tag/"
+      - "/author/"
+      - "/feed/"
+      - "/ir/sairag"
+      - "/ir/habaerttae"
+      - "/ir/iz-efira-os"
+      - "/ir/vsya-afisha-os"
+      - "/wp-admin/"
+      - ".jpg"
+      - ".png"
+      - ".pdf"
+
+  # ============================================================
+  # alaniatv.ru — Ossetian news (Iron / Digoron)
+  # ============================================================
+  alaniatv:
+    match:
+      - "alaniatv.ru"
+    default_language: "os"
+    noise_language: ["common", "os"]
+    start_url: "https://alaniatv.ru/news_os/"
+    rubric_strategy:
+      - "menu_scraping"
+      - "pattern_fallback"
+    author_strategy:
+      - "meta_tag"
+      - "class_selector"
+      - "json_ld_graph"
+      - "regex_in_content"
+      - "default_fallback"
+    rubric_selectors:
+      - "a[href='/news_os/']"
+      - "a[href='/news_digoron/']"
+      - ".news-categs-list a[href]"
+      - "a[href*='/news_os_heading/']"
+    card_selectors:
+      - ".news-list-item"
+      - "article.post"
+      - ".news-list-item__title[href]"
+      - ".news-list-item__image"
+    article_link_selectors:
+      - ".news-list-item__title[href]"
+      - ".news-list-item__image a[href]"
+      - ".news-list a[href]"
+      - "h2 a"
+      - "a[href*='/news_os/']"
+      - "a[href*='/news_digoron/']"
+    pagination_selectors:
+      - "a.page-numbers"
+      - "a.next"
+      - "link[rel='next']"
+      - "a[href*='/page/']"
+    title_selectors:
+      - "h1.single-header__title"
+      - 'meta[property="og:title"]'
+      - "title"
+    date_selectors:
+      - 'meta[property="article:published_time"]'
+      - ".single-header__date"
+      - "time[datetime]"
+      - "time"
+    author_selectors:
+      - 'meta[name="author"]'
+      - ".single-header__author a"
+      - ".entry-author a"
+    category_selectors:
+      - ".breadcrumb a"
+      - ".breadcrumb__item a"
+      - 'meta[property="article:section"]'
+    content_selectors:
+      - ".content"
+      - "article"
+      - "main"
+    remove_selectors:
+      - "script"
+      - "style"
+      - "noscript"
+      - "iframe"
+      - ".video"
+      - ".share-row"
+      - ".social-likes"
+      - ".rambler-likes"
+      - ".evc-social-likes"
+      - ".banner"
+      - ".advertisement"
+    article_url_filters:
+      - "/news_os/"
+      - "/news_digoron/"
+    article_url_excludes:
+      - "/page/"
+      - "/category/"
+      - "/tag/"
+      - "/author/"
+      - "/feed/"
+      - "/news_os$"
+      - "/news_digoron$"
+      - "/news_os_heading/"
+      - ".jpg"
+      - ".png"
+      - ".pdf"
+
+  # ============================================================
+  # mahdug.ru — Ossetian literary portal
+  # ============================================================
+  mahdug:
+    match:
+      - "mahdug.ru"
+    default_language: "os"
+    noise_language: ["common", "os"]
+    start_url: "https://mahdug.ru/"
+    rubric_strategy:
+      - "menu_scraping"
+    author_strategy:
+      - "default_fallback"
+    rubric_selectors:
+      - "nav.nav a[href]"
+      - "ul.nav__list a[href]"
+      - ".content a[href*='/rubriki/']"
+      - "a[href='/iron-literaturaejy-antologi/']"
+      - "a[href='/proekty-mah-dug-a/']"
+    card_selectors:
+      - ".content"
+    article_link_selectors:
+      - ".content a[href]"
+    pagination_selectors: []
+    title_selectors:
+      - "h1"
+      - 'meta[property="og:title"]'
+      - "title"
+    date_selectors: []
+    author_selectors:
+      - 'meta[name="author"]'
+    category_selectors:
+      - ".breadcrumbs .breadcrumbs__item:nth-last-child(2) a"
+      - ".breadcrumbs__item a"
+      - 'meta[property="article:section"]'
+    content_selectors:
+      - ".content"
+    remove_selectors:
+      - "script"
+      - "style"
+      - "noscript"
+      - ".breadcrumbs"
+      - ".social-likes"
+      - ".share"
+    article_url_filters: []
+    article_url_excludes:
+      - "/go/"
+      - "/search"
+      - "/archive"
+      - ".jpg"
+      - ".png"
+      - ".pdf"
+
+  # ============================================================
+  # rastdzinad.ru — Ossetian news (WordPress)
+  # ============================================================
+  rastdzinad:
+    match:
+      - "rastdzinad.ru"
+    default_language: "os"
+    noise_language: ["common", "os"]
+    start_url: "https://rastdzinad.ru"
+    rubric_strategy:
+      - "menu_scraping"
+    author_strategy:
+      - "meta_tag"
+      - "class_selector"
+      - "json_ld_graph"
+      - "regex_in_content"
+      - "default_fallback"
+    rubric_selectors:
+      - "ul#menu-18 a[href]"
+      - "ul#menu-17 a[href]"
+      - ".td-mobile-content a[href]"
+      - "#td-header-menu a[href]"
+      - "a[href='/category/saejrag']"
+      - "a[href='/category/habaerttae']"
+      - "a[href='/category/arhiv']"
+    card_selectors:
+      - "article.post"
+      - ".td_module_wrap"
+      - "div.td-block-span6"
+      - "div.td_module_1"
+    article_link_selectors:
+      - "h1.entry-title a"
+      - "h2.entry-title a"
+      - "h3.entry-title a"
+      - ".entry-title a"
+      - ".td-module-thumb a"
+      - ".td-big-grid-wrapper a"
+      - ".td-post-title a"
+    pagination_selectors:
+      - "a.page-numbers"
+      - "a.next.page-numbers"
+      - "link[rel='next']"
+      - "a[href*='/page/']"
+    title_selectors:
+      - "h1.entry-title"
+      - 'meta[property="og:title"]'
+      - "title"
+    date_selectors:
+      - 'meta[property="article:published_time"]'
+      - "time[datetime]"
+      - ".entry-date"
+      - ".td-post-date"
+    author_selectors:
+      - ".td-post-author-name a"
+      - ".entry-author a"
+      - 'meta[name="author"]'
+    category_selectors:
+      - ".td-category a"
+      - 'meta[property="article:section"]'
+      - ".breadcrumb a"
+    content_selectors:
+      - ".td-post-content"
+      - ".entry-content"
+      - "article"
+      - "main"
+    remove_selectors:
+      - "script"
+      - "style"
+      - "noscript"
+      - "iframe"
+      - ".td-post-featured-image"
+      - ".td-post-sharing"
+      - ".evc-social-likes"
+      - ".sharedaddy"
+      - ".banner"
+      - ".advertisement"
+    article_url_filters:
+      - "/2026/"
+      - "/2025/"
+      - "/2024/"
+      - "/2023/"
+      - "/2022/"
+      - "/2021/"
+      - "/2020/"
+      - "/2019/"
+      - "/2018/"
+    article_url_excludes:
+      - "/category/"
+      - "/tag/"
+      - "/author/"
+      - "/page/"
+      - "/wp-content/"
+      - "/wp-json/"
+      - "/feed"
+      - ".jpg"
+      - ".png"
+      - ".pdf"
+
+  # ============================================================
+  # sputnik-ossetia.com — Ossetian news (Sputnik)
+  # ============================================================
+  sputnik_ossetia:
+    match:
+      - "sputnik-ossetia.com"
+    default_language: "os"
+    noise_language: ["common", "os"]
+    start_url: "https://sputnik-ossetia.com"
+    rubric_strategy:
+      - "context_passed"
+    author_strategy:
+      - "meta_tag"
+      - "class_selector"
+      - "json_ld_graph"
+      - "regex_in_content"
+      - "default_fallback"
+    rubric_selectors:
+      - "https://sputnik-ossetia.com/sports/"
+      - "https://sputnik-ossetia.com/culture/"
+      - "https://sputnik-ossetia.com/reportage/"
+      - "https://sputnik-ossetia.com/location_uaraseyy/"
+      - "https://sputnik-ossetia.com/South_Ossetia/"
+      - "https://sputnik-ossetia.com/North_Ossetia/"
+      - "https://sputnik-ossetia.com/news/"
+      - "https://sputnik-ossetia.com/incidents/"
+      - "https://sputnik-ossetia.com/common_uaraseyy-sarmagond-operatsi-ukrainayy/"
+    card_selectors:
+      - "article"
+      - ".article"
+      - ".list-item"
+      - ".news-item"
+      - ".story"
+    article_link_selectors:
+      - "a[data-full-url]"
+      - "h2 a"
+      - "h3 a"
+      - ".article a[href]"
+      - ".list a[href]"
+    pagination_selectors:
+      - ".list__more[data-url]"
+      - "a.page-numbers"
+      - "link[rel='next']"
+    title_selectors:
+      - '[data-head-title]'
+      - 'meta[property="og:title"]'
+      - '[itemprop="headline"]'
+      - "h1"
+    date_selectors:
+      - '[itemprop="datePublished"]'
+      - 'meta[property="article:published_time"]'
+      - '[data-published]'
+      - "time[datetime]"
+      - "time"
+    author_selectors:
+      - '[data-author]'
+      - '[itemprop="alternateName"]'
+      - ".article__author"
+      - ".author"
+      - 'meta[name="author"]'
+    category_selectors:
+      - '[itemprop="articleSection"]'
+      - '[data-analytics-tags]'
+    content_selectors:
+      - '[itemprop="articleBody"]'
+      - ".article__body"
+      - ".content"
+      - "article"
+    remove_selectors:
+      - "script"
+      - "style"
+      - "noscript"
+      - "iframe"
+      - ".banner"
+      - ".advertisement"
+      - ".share"
+      - ".social-likes"
+    article_url_filters: []
+    article_url_excludes:
+      - "/category/"
+      - "/tag/"
+      - "/author/"
+      - "/page/"
+      - ".jpg"
+      - ".png"
+      - ".pdf"
+
+  # ============================================================
+  # xurzarin.ru — Ossetian news (WordPress)
+  # ============================================================
+  xurzarin:
+    match:
+      - "xurzarin.ru"
+    default_language: "os"
+    noise_language: ["common", "os"]
+    start_url: "https://xurzarin.ru"
+    rubric_strategy:
+      - "menu_scraping"
+    author_strategy:
+      - "meta_tag"
+      - "class_selector"
+      - "json_ld_graph"
+      - "regex_in_content"
+      - "default_fallback"
+    rubric_selectors:
+      - "ul#menu-primary-items a[href]"
+      - "a[href='/category/aexsaenad/']"
+      - "a[href='/category/politikae/']"
+      - "a[href='/category/kulturae/']"
+      - "a[href='/category/fotokamtae/']"
+      - "a[href='/category/xaeu/']"
+      - "a[href='/category/sport/']"
+      - "a[href='/category/analitikae/']"
+    card_selectors:
+      - ".hk-listunit"
+      - "article.post"
+      - "div.post"
+      - ".entry"
+    article_link_selectors:
+      - ".hk-listunit-title a[href]"
+      - "a.post-list-link[href]"
+      - "article h1 a[href]"
+      - "article h2 a[href]"
+      - "article h3 a[href]"
+      - "h1.entry-title a[href]"
+      - "h2.entry-title a[href]"
+      - "h3.entry-title a[href]"
+      - ".entry-title a[href]"
+      - ".entry-featured-img-link[href]"
+    pagination_selectors:
+      - "a.page-numbers"
+      - "a.next.page-numbers"
+      - "link[rel='next']"
+      - "a[href*='/page/']"
+    title_selectors:
+      - "h1.loop-title"
+      - "h1.entry-title"
+      - 'meta[property="og:title"]'
+      - "title"
+    date_selectors:
+      - 'meta[property="article:published_time"]'
+      - '[itemprop="datePublished"]'
+      - "time[datetime]"
+      - ".entry-date"
+    author_selectors:
+      - ".entry-author a"
+      - 'meta[name="author"]'
+      - ".entry-byline-author a"
+    category_selectors:
+      - ".entry-byline-cats a"
+      - 'meta[property="article:section"]'
+      - ".breadcrumb a"
+    content_selectors:
+      - ".entry-the-content"
+      - ".entry-content"
+      - "article"
+      - "main"
+    remove_selectors:
+      - ".yarpp-related"
+      - "script"
+      - "style"
+      - "noscript"
+      - "iframe"
+      - ".banner"
+      - ".advertisement"
+      - ".share"
+      - ".social-likes"
+    article_url_filters: []
+    article_url_excludes:
+      - "/category/"
+      - "/tag/"
+      - "/author/"
+      - "/page/"
+      - "/wp-content/"
+      - ".jpg"
+      - ".png"
+      - ".pdf"

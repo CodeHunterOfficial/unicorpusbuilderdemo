@@ -1,0 +1,817 @@
+# ============================================================
+# GLOBAL DEFAULTS — shared settings, strategies, families
+# ============================================================
+version: "2.0"
+name: "optimal_pipeline"
+description: "Universal configurable scraper for multilingual news sites"
+site_count_expected: 28
+
+# ============================================================
+# BASE SETTINGS
+# ============================================================
+global:
+  start_url: "https://tatar-inform.tatar/"
+  same_domain_only: true
+  use_amp_fallback: true
+  respect_robots: false
+  colab_auto_download: false
+
+  request:
+    timeout: 25
+    retries: 3
+    backoff_base: 1.6
+    default_delay_seconds: 1.2
+    rubric_delay_range_seconds: [1.0, 2.2]
+    max_threads: 8
+    verify_ssl: true
+
+  limits:
+    max_depth: 3
+    max_pages: 1000
+    max_items: 10000
+    excerpt_len: 260
+    hash_truncate: 32
+
+  url_rules:
+    article_url_filters_default:
+      - "/news/"
+      - "/article/"
+      - "/story/"
+      - "/post/"
+      - "/a/"
+    article_url_excludes_default:
+      - "/rubric/"
+      - "/category/"
+      - "/tag/"
+      - "/widget/"
+      - "/list/"
+    noise_url_parts:
+      - "/photo/"
+      - "/video/"
+      - "/special-projects/"
+      - "/widget/"
+      - "/tag/list/"
+      - "vkvideo"
+      - "youtube"
+      - "youtu.be"
+      - "instagram"
+      - "facebook"
+      - "telegram"
+      - "ok.ru"
+      - "/login"
+      - "/signup"
+      - "/signin"
+      - "/register"
+      - "/attachments/"
+      - "/store/"
+      - ".png"
+      - ".jpg"
+      - ".jpeg"
+      - ".gif"
+      - ".svg"
+      - ".xml"
+      - ".pdf"
+      - ".zip"
+
+  text_rules:
+    normalize:
+      lowercase: true
+      trim: true
+      remove_punctuation: false
+
+    language_detection:
+      enabled: true
+      fallback: "unknown"
+
+    filters:
+      min_word_length: 2
+      remove_numeric_only: true
+      drop_if_only_noise: true
+      min_text_length: 20
+      deduplicate_lines: true
+
+    patterns:
+      ui_patterns:
+        - "читать.*"
+        - "read.*"
+        - "show.*"
+        - "load.*"
+      ad_patterns:
+        - "advert"
+        - "promo"
+        - "sponsor"
+
+  content_cleanup:
+    remove_selectors:
+      - "script"
+      - "style"
+      - "noscript"
+      - "iframe"
+      - "svg"
+      - "form"
+      - "button"
+      - "canvas"
+
+  meta_extraction:
+    title_selectors_default:
+      - 'meta[property="og:title"]'
+      - 'meta[name="twitter:title"]'
+      - "h1"
+      - "title"
+    date_selectors_default:
+      - 'meta[property="article:published_time"]'
+      - 'meta[name="pubdate"]'
+      - 'meta[name="published_date"]'
+      - 'meta[itemprop="datePublished"]'
+      - 'meta[name="published_at"]'
+      - "time[datetime]"
+    author_selectors_default:
+      - 'meta[property="article:author"]'
+      - 'meta[name="author"]'
+      - 'meta[name="Author"]'
+    category_selectors_default:
+      - 'meta[property="article:section"]'
+      - 'meta[name="section"]'
+      - ".breadcrumb a"
+      - "nav.breadcrumb a"
+    image_selectors_default:
+      - 'meta[property="og:image"]'
+      - 'meta[property="og:image:secure_url"]'
+      - 'meta[name="twitter:image"]'
+      - 'meta[name="twitter:image:src"]'
+
+  rubric_strategies_order:
+    - "context_passed"
+    - "menu_scraping"
+    - "archive_generation"
+    - "nuxt_state_parsing"
+    - "auto_detect_multi"
+    - "pattern_fallback"
+
+  author_strategies_order:
+    - "meta_tag"
+    - "class_selector"
+    - "style_based"
+    - "json_ld_graph"
+    - "json_ld_simple"
+    - "regex_in_content"
+    - "priority_list"
+    - "default_fallback"
+
+  category_strategies_order:
+    - "meta_tag"
+    - "url_path_parsing"
+    - "breadcrumb"
+    - "default_fallback"
+    - "context_passed"
+
+# ============================================================
+# STRATEGY LIBRARY
+# ============================================================
+reusable_strategies:
+
+  rubric_sources:
+    menu_scraping:
+      enabled: true
+      selectors:
+        - "nav a[href]"
+        - "header a[href]"
+        - "ul a[href]"
+        - "div.np-widget-rubric a[href]"
+    archive_generation:
+      enabled: true
+      patterns:
+        - "{base_url}/{year}/"
+        - "{base_url}/{year}/{month:02d}/"
+        - "{base_url}/{year}/{month:02d}/page/1/"
+    context_passed:
+      enabled: true
+    nuxt_state_parsing:
+      enabled: true
+      script_patterns:
+        - "__NUXT__"
+        - "window.__NUXT__"
+      url_regexes:
+        - "https?://[^\"'\\s<>]+"
+        - "/(?:news|rubric|category|tag|article|post|a)/[^\"'\\s<>]*"
+      json_keys:
+        - "path"
+        - "href"
+        - "url"
+    auto_detect_multi:
+      enabled: true
+      steps:
+        - "profile_specific_selectors"
+        - "menu_scraping"
+        - "pattern_fallback"
+        - "nuxt_state_parsing"
+    pattern_fallback:
+      enabled: true
+      href_patterns:
+        - "/news/"
+        - "/rubric/"
+        - "/category/"
+        - "/tag/"
+        - "/section/"
+        - "/archive/"
+
+  author_sources:
+    class_selector:
+      enabled: true
+      selectors:
+        - ".author"
+        - ".article-author"
+        - ".byline"
+        - ".by"
+        - ".c-author"
+        - ".c-author__content"
+        - ".media-block__title--author"
+        - ".post-author"
+        - ".news-author"
+        - ".main__author"
+        - ".widget__author"
+        - ".authors_3UWeo .item_1CuO-"
+        - ".material-author"
+        - ".author-name"
+        - "span.author-name"
+        - "a.date-widget__author"
+        - ".post-meta .author vcard a"
+        - ".post-meta .author"
+        - ".entry-meta .author a"
+        - ".author__name"
+        - ".writer"
+    style_based:
+      enabled: true
+      style_keywords:
+        - "author"
+        - "byline"
+    meta_tag:
+      enabled: true
+      selectors:
+        - 'meta[property="article:author"]'
+        - 'meta[name="author"]'
+        - 'meta[name="Author"]'
+    regex_in_content:
+      enabled: true
+    json_ld_simple:
+      enabled: true
+      target_types:
+        - "NewsArticle"
+        - "Article"
+        - "ReportageNewsArticle"
+        - "BlogPosting"
+    json_ld_graph:
+      enabled: true
+      target_types:
+        - "NewsArticle"
+        - "Article"
+        - "ReportageNewsArticle"
+        - "BlogPosting"
+    priority_list:
+      enabled: true
+    default_fallback:
+      enabled: true
+
+  category_sources:
+    url_path_parsing:
+      enabled: true
+      patterns:
+        - "/category/([^/]+)"
+        - "/rubric/([^/]+)"
+        - "/articles/([^/]+)/\\d{4}"
+        - "/bahsho/([^/]+)/"
+        - "/prezidenti-t/([^/]+)/"
+        - "/uato/([^/]+)/"
+        - "/alasao/([^/]+)/"
+        - "/news/([^/]+)/"
+
+# ============================================================
+# DEFAULT PROFILE — auto-detection + fallback selectors
+# ============================================================
+default_profile:
+  default_author: null
+  default_language: null
+  cookie_lang: null
+  amp_mode: "none"
+  verify_ssl: true
+  noise_language: ["common", "ru"]
+
+  auto_detect_family:
+    enabled: true
+    scan_pages: 3
+    confidence_threshold: 2
+    families:
+
+      np_widget:
+        indicators:
+          - selector: "div.np-widget-rubric"
+            weight: 3
+          - selector: "div.page-main__text"
+            weight: 2
+          - selector: "li.newsList__item"
+            weight: 2
+          - selector: "li.all-news__list"
+            weight: 2
+          - url_pattern: "/news/rubric/list/"
+            weight: 2
+        match_min_score: 4
+        profile:
+          rubric_selectors:
+            - "div.np-widget-rubric a[href]"
+            - "a.main-menu__link[href*='/news/rubric/']"
+            - "a.menu-list__link[href*='/news/rubric/list/']"
+            - "a[href*='/news/rubric/list/']"
+            - "nav a[href*='/news/']"
+          card_selectors:
+            - "li.newsList__item"
+            - "li.all-news__list"
+            - "li.tm-news-list__item"
+            - "ul.list li.list__item"
+            - "li.news-list__item"
+          card_exclude_classes: ["banner", "_more", "ad"]
+          article_link_selectors:
+            - "a.newsList__item-text"
+            - "a.all-news__list__link"
+            - "a.tm-news-list__item-link"
+            - "a.list__link"
+            - "a.news-list__link"
+          title_selectors:
+            - "h1.main__news-title"
+            - "h1.single-page__title"
+            - "h1.single__title"
+            - 'meta[property="og:title"]'
+            - "h1"
+            - "title"
+          date_selectors:
+            - "a.main__date"
+            - "time.news__item-date"
+            - "span.list__date"
+            - 'meta[property="article:published_time"]'
+            - 'meta[itemprop="datePublished"]'
+            - "time[datetime]"
+          author_selectors:
+            - ".single__author"
+            - ".main__author"
+            - 'meta[property="article:author"]'
+            - 'meta[name="author"]'
+          category_selectors:
+            - "a.main__rubric"
+            - "span.tm-news-list__item-rubric"
+            - 'meta[property="article:section"]'
+          content_selectors:
+            - "div.page-main__text"
+            - "div.single-page__content"
+            - "div.single__content"
+            - "div.news-main-container__paragraph"
+          remove_selectors:
+            - ".news__telegram__text"
+            - ".np-news-single__aftertext"
+            - ".widget-any-content"
+            - ".main__icons"
+            - ".widget-stat"
+          pagination_selectors:
+            - "ul.pagination a"
+            - "a.next"
+            - "a:contains('Next')"
+            - "link[rel='next']"
+            - "a[href*='/page/']"
+            - "a[href*='page=']"
+          article_url_filters: ["/news/"]
+          article_url_excludes:
+            - "/news/rubric/list/"
+            - "/news/widget/list/"
+            - "/news/date/list/"
+            - "/photo/"
+            - "/video/"
+            - "/page/"
+            - "/upload/"
+            - "/projects/"
+            - "/stories/"
+            - "/editions/"
+            - "/gallery/"
+            - "/authors/"
+            - "/persons/"
+            - "/blogs/"
+            - ".jpg"
+            - ".png"
+            - ".pdf"
+
+      wordpress:
+        indicators:
+          - selector: "div.entry-content"
+            weight: 3
+          - selector: "article.post"
+            weight: 2
+          - selector: "ul.page-numbers"
+            weight: 2
+          - url_pattern: "/category/"
+            weight: 2
+          - url_pattern: "/wp-content/"
+            weight: 3
+        match_min_score: 4
+        profile:
+          rubric_selectors:
+            - "nav a[href]"
+            - "header a[href]"
+            - "a[href*='/category/']"
+            - "ul#menu-primary-menu a"
+          card_selectors:
+            - "article.post"
+            - "article"
+            - "div.post"
+          article_link_selectors:
+            - "h2.entry-title a"
+            - "h2 a"
+            - ".entry-title a"
+          title_selectors:
+            - "h1.entry-title"
+            - 'meta[property="og:title"]'
+            - "h1"
+            - "title"
+          date_selectors:
+            - 'meta[property="article:published_time"]'
+            - 'meta[itemprop="datePublished"]'
+            - ".post-meta .meta-date"
+            - "time[datetime]"
+            - ".date"
+          author_selectors:
+            - ".post-meta .author a"
+            - ".entry-meta .author a"
+            - 'meta[name="author"]'
+            - ".author"
+          category_selectors:
+            - ".cat-links a"
+            - 'meta[property="article:section"]'
+            - ".breadcrumb a"
+          content_selectors:
+            - "div.entry-content"
+            - "article"
+            - ".content"
+          remove_selectors:
+            - ".share"
+            - ".social"
+            - ".banner"
+            - ".widget"
+            - ".sidebar"
+          pagination_selectors:
+            - "a.next.page-numbers"
+            - "ul.page-numbers a"
+            - "div.pagination a"
+            - "a.next"
+            - "link[rel='next']"
+            - "a[href*='/page/']"
+            - "a[href*='paged=']"
+          article_url_filters: ["/news/", "/article/", "/post/"]
+          article_url_excludes:
+            - "/category/"
+            - "/tag/"
+            - "/author/"
+            - "/page/"
+            - "/upload/"
+            - "/projects/"
+            - "/stories/"
+            - ".jpg"
+            - ".png"
+            - ".pdf"
+
+      rferl:
+        indicators:
+          - selector: "ul.archive-list"
+            weight: 3
+          - selector: "a.btn.link-showMore"
+            weight: 3
+          - url_pattern: "/a/"
+            weight: 3
+        match_min_score: 3
+        profile:
+          amp_mode: "prefix"
+          rubric_selectors:
+            - "ul.main-nav__list a[href]"
+            - "nav a[href]"
+            - "header a[href]"
+            - "a[href*='/s/']"
+          card_selectors: ["ul.archive-list li"]
+          article_link_selectors: ["a[href*='/a/']"]
+          title_selectors:
+            - "h1"
+            - 'meta[property="og:title"]'
+            - "title"
+          date_selectors:
+            - 'meta[property="article:published_time"]'
+            - 'meta[name="pubdate"]'
+            - "time[datetime]"
+          author_selectors:
+            - 'meta[name="Author"]'
+            - ".c-author a"
+            - ".c-author__content"
+          category_selectors:
+            - 'meta[property="article:section"]'
+            - ".category"
+            - ".tag"
+          content_selectors:
+            - ".article-body"
+            - "article"
+            - ".content"
+          remove_selectors: [".banner", ".social", ".share"]
+          pagination_selectors:
+            - "a.btn.link-showMore"
+            - "a.load-more"
+            - "a[href*='p=']"
+          article_url_filters: ["/a/"]
+          article_url_excludes: []
+
+      nuxt:
+        indicators:
+          - selector: "script:contains('__NUXT__')"
+            weight: 4
+          - selector: "div.paragraph.serif-text"
+            weight: 3
+          - url_pattern: "/articles/"
+            weight: 2
+        match_min_score: 3
+        profile:
+          rubric_strategy:
+            - "nuxt_state_parsing"
+            - "menu_scraping"
+            - "pattern_fallback"
+          rubric_selectors:
+            - "nav a[href]"
+            - "header a[href]"
+            - "a[href*='/articles/']"
+          card_selectors:
+            - "article"
+            - "div.item_ynUpT"
+          article_link_selectors:
+            - "a[href*='/articles/']"
+            - "a[href*='/news/']"
+          title_selectors:
+            - "h1"
+            - "h1.h1_fQcc_"
+            - 'meta[property="og:title"]'
+            - "title"
+          date_selectors:
+            - 'script[type="application/ld+json"]'
+            - 'meta[name="published_at"]'
+            - 'meta[property="article:published_time"]'
+            - "time[datetime]"
+          author_selectors:
+            - ".authors_3UWeo .item_1CuO-"
+            - ".material-author"
+            - 'meta[name="author"]'
+          category_selectors:
+            - "a.cm-rubric"
+            - ".rubric"
+            - 'meta[property="article:section"]'
+          content_selectors:
+            - "div.paragraph.serif-text"
+            - ".material-content"
+            - "article"
+            - ".content"
+          remove_selectors: [".banner", ".social", ".share"]
+          pagination_selectors:
+            - "a.pagination__next"
+            - "a.load-more"
+            - "a:contains('More')"
+            - "a[href*='page=']"
+            - "a[href*='/page/']"
+          article_url_filters: ["/articles/", "/news/"]
+          article_url_excludes:
+            - "/galleries/"
+            - "/rubric/"
+            - "/page/"
+            - "/upload/"
+            - "/projects/"
+            - ".jpg"
+            - ".png"
+
+      drupal:
+        indicators:
+          - selector: "div.article_node__content"
+            weight: 3
+          - selector: "li.pager__item--next"
+            weight: 3
+          - url_pattern: "/archive/"
+            weight: 2
+        match_min_score: 3
+        profile:
+          rubric_selectors:
+            - "nav a[href*='/archive/']"
+            - "a[href*='/archive/']"
+          card_selectors: [".view-content article"]
+          article_link_selectors: ["article a[href*='/archive/']"]
+          title_selectors: ["h1", "title"]
+          date_selectors:
+            - "li.article_node__date"
+            - 'meta[property="article:published_time"]'
+          author_selectors:
+            - "a[href*='/user/']"
+            - 'meta[name="author"]'
+          category_selectors:
+            - "a[href*='/archive/']"
+            - 'meta[property="article:section"]'
+          content_selectors:
+            - "div.article_node__content"
+            - "article"
+          remove_selectors: [".banner", ".social"]
+          pagination_selectors:
+            - "li.pager__item--next a"
+            - "a[href*='page=']"
+          article_url_filters: ["/archive/"]
+          article_url_excludes:
+            - "/page/"
+            - "/upload/"
+            - "/projects/"
+            - ".jpg"
+            - ".png"
+
+  title_selectors:
+    - 'meta[property="og:title"]'
+    - 'meta[name="twitter:title"]'
+    - "h1"
+    - "title"
+
+  date_selectors:
+    - 'script[type="application/ld+json"]'
+    - 'meta[property="article:published_time"]'
+    - 'meta[name="pubdate"]'
+    - 'meta[name="published_date"]'
+    - 'meta[itemprop="datePublished"]'
+    - "time[datetime]"
+    - ".date"
+    - ".publish-date"
+
+  author_selectors:
+    - 'script[type="application/ld+json"]'
+    - 'meta[property="article:author"]'
+    - 'meta[name="author"]'
+    - 'meta[name="Author"]'
+    - 'a[rel="author"]'
+    - ".author"
+    - ".byline"
+    - ".writer"
+    - ".post-author"
+
+  category_selectors:
+    - 'script[type="application/ld+json"]'
+    - 'meta[property="article:section"]'
+    - 'meta[name="section"]'
+    - ".breadcrumb a"
+    - "nav.breadcrumb a"
+    - ".category"
+    - ".rubric"
+
+  image_selectors:
+    - 'meta[property="og:image"]'
+    - 'meta[property="og:image:secure_url"]'
+    - 'meta[name="twitter:image"]'
+    - 'meta[name="twitter:image:src"]'
+    - 'meta[itemprop="image"]'
+
+  content_selectors:
+    - "article"
+    - "[itemprop='articleBody']"
+    - ".article-body"
+    - ".article-content"
+    - ".post-body"
+    - ".post-content"
+    - ".entry-content"
+    - ".story-body"
+    - ".content"
+    - "main"
+    - "#content"
+
+  remove_selectors:
+    - ".banner"
+    - ".social"
+    - ".share"
+    - ".cookie"
+    - ".widget"
+    - ".sidebar"
+    - ".advertisement"
+    - ".comments"
+    - "script"
+    - "style"
+    - "noscript"
+    - "iframe"
+    - "form"
+    - "button"
+    - "canvas"
+    - "nav"
+    - "footer"
+    - "header"
+
+  card_selectors:
+    - "article"
+    - '[class*="card"]'
+    - '[class*="item"]'
+    - '[class*="post"]'
+    - '[class*="news"]'
+    - '[class*="story"]'
+    - "li"
+    - "div.card"
+    - "div.news-item"
+    - "div.post"
+
+  card_exclude_classes:
+    - "ad"
+    - "banner"
+    - "widget"
+    - "sidebar"
+    - "related"
+    - "footer"
+    - "header"
+    - "nav"
+
+  article_link_selectors:
+    - "h2 a"
+    - "h3 a"
+    - ".title a"
+    - "a.read-more"
+    - "a[href]"
+
+  pagination_selectors:
+    - 'a[rel="next"]'
+    - 'link[rel="next"]'
+    - "a.next"
+    - "a.load-more"
+    - "button.load-more"
+    - "a.show-more"
+    - "a[href*='page=']"
+    - "a[href*='/page/']"
+    - "a[href*='p=']"
+
+  article_url_filters:
+    - "/news/"
+    - "/article/"
+    - "/articles/"
+    - "/story/"
+    - "/post/"
+    - "/blog/"
+    - "/a/"
+    - "?p="
+    - "?page_id="
+    - "/view/"
+    - "/read/"
+
+  article_url_excludes:
+    - "/category/"
+    - "/rubric/"
+    - "/tag/"
+    - "/author/"
+    - "/login"
+    - "/signup"
+    - "/search"
+    - "/page/"
+    - "/upload/"
+    - "/projects/"
+    - "/stories/"
+    - "/editions/"
+    - "/gallery/"
+    - "/authors/"
+    - "/persons/"
+    - "/blogs/"
+    - "/vacancy/"
+    - "/contacts/"
+    - "/ad/"
+    - "/app/"
+    - "/rectech/"
+    - "/pro/"
+    - "/medical/"
+    - "/mk-service/"
+    - "/agentstvo_mk/"
+    - ".jpg"
+    - ".png"
+    - ".pdf"
+
+  rubric_strategy:
+    - "menu_scraping"
+    - "context_passed"
+    - "nuxt_state_parsing"
+    - "auto_detect_multi"
+    - "pattern_fallback"
+
+  author_strategy:
+    - "meta_tag"
+    - "class_selector"
+    - "style_based"
+    - "json_ld_graph"
+    - "json_ld_simple"
+    - "regex_in_content"
+    - "priority_list"
+    - "default_fallback"
+
+  category_strategy:
+    - "meta_tag"
+    - "url_path_parsing"
+    - "breadcrumb"
+    - "default_fallback"
+    - "context_passed"
+
+  rubric_selectors:
+    - "nav a[href]"
+    - "header a[href]"
+    - ".menu a[href]"
+    - "a[href*='/category/']"
+    - "a[href*='/rubric/']"
+    - "a[href*='/section/']"
+    - "a[href*='/tag/']"

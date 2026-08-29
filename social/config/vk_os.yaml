@@ -1,0 +1,43 @@
+os_domains:
+  - id: club55384572
+    name: "My thoughts"
+    language: os
+  - id: barzafcag
+    name: "Barzafcag"
+    language: os
+  - id: qaztizaer
+    name: "Kaztizar (Vladikavkaz)"
+    language: os
+  - id: irondzinad
+    name: "For the development of Ossetian identity"
+    language: os
+  - id: iron_language
+    name: "Learning Ossetian language together"
+    language: os
+  - id: club75301500
+    name: "I PRAY"
+    language: os
+  - id: allon_club
+    name: "Those who bear the name of Uastyrji and pray to Uastyrji"
+    language: os
+  - id: konafolk
+    name: "KONA (Official page of Kona)"
+    language: os
+  - id: ironau_dzurut
+    name: "Ossetian literature"
+    language: os
+  - id: ourcxinval
+    name: "CHREBA - TSKHINVAL"
+    language: os
+  - id: ironavzag
+    name: "Ossetian language"
+    language: os
+  - id: ironambisond
+    name: "Ossetian folk tales and proverbs"
+    language: os
+  - id: kulturonkhord
+    name: "Folk Choir"
+    language: os
+  - id: simd_ensemble
+    name: "State Song and Dance Ensemble of South Ossetia Simd named after B. A. Galaev"
+    language: os
