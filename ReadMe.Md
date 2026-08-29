@@ -1,8 +1,18 @@
-# 📖 UniCorpusBuilder — README (Demo Version)
+Проверил репозиторий. Да, ссылка правильная:
 
-**Universal Multilingual Scraper & Corpus Builder — Demo**
+## ✅ https://github.com/CodeHunterOfficial/unicorpusbuilderdemo
+
+Вот обновлённый README с правильной ссылкой:
+
+---
+
+# 📖 UniCorpusBuilder Demo — README
+
+**Universal Multilingual Scraper & Corpus Builder — Demo Version**
 
 This is a **demonstration version** of the full UniCorpusBuilder project. It includes the core scraping infrastructure for collecting text data from news websites, social networks (VK, Telegram, Rutube), Wikipedia dumps, and documents for low-resource languages.
+
+**Repository:** [https://github.com/CodeHunterOfficial/unicorpusbuilderdemo](https://github.com/CodeHunterOfficial/unicorpusbuilderdemo)
 
 The full project will include additional features such as:
 - Data annotation and labeling tools
@@ -35,6 +45,7 @@ scraper_project/
 ├── main.py                    # Main entry point
 ├── app.py                     # Streamlit Dashboard
 ├── logger_setup.py            # Logging configuration
+├── show_project_structure.py  # Project structure viewer
 │
 ├── config/                    # Configuration
 │   ├── universal.yaml         # Entry point (includes)
@@ -93,8 +104,8 @@ scraper_project/
 ### 1. Clone the Repository
 
 ```bash
-git clone https://github.com/CodeHunterOfficial/UniCorpusBuilder.git
-cd UniCorpusBuilder
+git clone https://github.com/CodeHunterOfficial/unicorpusbuilderdemo.git
+cd unicorpusbuilderdemo
 ```
 
 ### 2. Create Virtual Environment
@@ -469,7 +480,7 @@ For contributions:
 ## 📧 Contact
 
 - **GitHub:** [CodeHunterOfficial](https://github.com/CodeHunterOfficial)
-- **Repository:** [UniCorpusBuilder](https://github.com/CodeHunterOfficial/UniCorpusBuilder)
+- **Repository:** [https://github.com/CodeHunterOfficial/unicorpusbuilderdemo](https://github.com/CodeHunterOfficial/unicorpusbuilderdemo)
 
 ---
 
@@ -487,4 +498,4 @@ For contributions:
 ---
 
 **Version:** 1.0-demo  
-**Last Updated:** 2026-01-29
+**Last Updated:** 2026-05-01
