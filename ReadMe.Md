@@ -1,11 +1,3 @@
-Проверил репозиторий. Да, ссылка правильная:
-
-## ✅ https://github.com/CodeHunterOfficial/unicorpusbuilderdemo
-
-Вот обновлённый README с правильной ссылкой:
-
----
-
 # 📖 UniCorpusBuilder Demo — README
 
 **Universal Multilingual Scraper & Corpus Builder — Demo Version**
