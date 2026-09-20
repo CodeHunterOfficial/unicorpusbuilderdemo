@@ -10,6 +10,7 @@ document is detected automatically.
 Version 2 changes
 -----------------
 * PDF OCR fallback for scanned documents (pypdfium2 + PaddleOCR)
+* OCR auto-detects page and text-line orientation (handles rotated scans)
 * Core-property metadata (title / author / created) for DOCX, PPTX, XLSX
 * Optional parallel processing with ThreadPoolExecutor
 * Retry with backoff for OCR failures
@@ -29,7 +30,8 @@ Installation
 
 Optional (PDF OCR for scanned documents):
     pip install pypdfium2
-    # Also install the poppler utilities for your platform.
+
+No external binaries are required; all dependencies install via pip.
 
 Usage
 -----
@@ -152,6 +154,10 @@ def get_ocr_engine(lang_code: str = 'en', use_gpu: bool = False):
     with 'ConvertPirAttribute2RuntimeAttribute not supported'.
     Passing enable_mkldnn=False to the constructor avoids this
     path without affecting recognition quality.
+
+    Orientation classification is enabled so that rotated scans
+    (e.g. upside-down pages) are detected and corrected before
+    text-line recognition.
     """
     key = f"{lang_code}_{use_gpu}"
     with _OCR_LOCK:
@@ -159,13 +165,16 @@ def get_ocr_engine(lang_code: str = 'en', use_gpu: bool = False):
             from paddleocr import PaddleOCR
             _OCR_INSTANCES[key] = PaddleOCR(
                 lang=lang_code,
-                use_doc_orientation_classify=False,
+                use_doc_orientation_classify=True,
                 use_doc_unwarping=False,
-                use_textline_orientation=False,
+                use_textline_orientation=True,
                 device='gpu' if use_gpu else 'cpu',
-                enable_mkldnn=False,   # ← key fix for Windows
+                enable_mkldnn=False,   # key fix for Windows / Paddle 3.x
             )
-            logger.info(f"Initialized PaddleOCR: lang={lang_code}, gpu={use_gpu}, mkldnn=False")
+            logger.info(
+                f"Initialized PaddleOCR: lang={lang_code}, gpu={use_gpu}, "
+                f"mkldnn=False, orientation=on"
+            )
         return _OCR_INSTANCES[key]
 
 
@@ -442,9 +451,12 @@ def extract_text_pdf_ocr(file_path: str, config: dict) -> Tuple[str, dict]:
     Render PDF pages to images and run PaddleOCR on each page.
 
     Uses pypdfium2 (Chrome's PDF engine) for rendering, so no
-    external binaries such as poppler are required. This path is
-    much slower than direct text extraction and is intended only
-    for scanned documents without a text layer.
+    external binaries such as poppler are required. PaddleOCR is
+    configured to auto-detect page and text-line orientation, so
+    upside-down scans are corrected before recognition.
+
+    This path is much slower than direct text extraction and is
+    intended only for scanned documents without a text layer.
     """
     if not LIBRARIES.get("pypdfium2"):
         return "", {"error": "pypdfium2 not installed"}
@@ -468,6 +480,11 @@ def extract_text_pdf_ocr(file_path: str, config: dict) -> Tuple[str, dict]:
         logger.error(f"pypdfium2 could not open {file_path}: {exc}")
         return "", {"error": f"pypdfium2 open: {exc}"}
 
+    # Read the page count BEFORE closing the document.
+    # pypdfium2 frees the internal FPDF_DOCUMENT on close(), and any
+    # subsequent len() call raises ctypes.ArgumentError.
+    page_count = len(pdf)
+
     ocr = get_ocr_engine(lang_code, use_gpu)
     collected: List[str] = []
     total_scores: List[float] = []
@@ -475,7 +492,7 @@ def extract_text_pdf_ocr(file_path: str, config: dict) -> Tuple[str, dict]:
     # PDF native resolution is 72 DPI; scale factor maps to target DPI
     scale = dpi / 72.0
 
-    for page_index in range(len(pdf)):
+    for page_index in range(page_count):
         try:
             page = pdf[page_index]
             pil_image = page.render(scale=scale).to_pil()
@@ -511,12 +528,13 @@ def extract_text_pdf_ocr(file_path: str, config: dict) -> Tuple[str, dict]:
 
     return "\n".join(collected), {
         "extractor": "paddleocr_pdf",
-        "pages": len(pdf),
+        "pages": page_count,
         "dpi": dpi,
         "lang": lang_code,
         "blocks": len(collected),
         "avg_confidence": avg_conf,
     }
+
 
 def extract_text_docx(file_path: str, config: dict) -> Tuple[str, dict]:
     """Extract paragraphs, tables and core properties from a DOCX file."""
@@ -670,6 +688,7 @@ def extract_text_image(file_path: str, config: dict, retries: int = 2) -> Tuple[
     ocr = get_ocr_engine(lang_code, use_gpu)
 
     last_exc: Optional[Exception] = None
+    result = None
     for attempt in range(retries + 1):
         try:
             result = ocr.predict(file_path)
@@ -684,7 +703,7 @@ def extract_text_image(file_path: str, config: dict, retries: int = 2) -> Tuple[
 
     texts: List[str] = []
     scores: List[float] = []
-    for page_result in result:
+    for page_result in result or []:
         rec_texts = page_result.get("rec_texts", [])
         rec_scores = page_result.get("rec_scores", [])
         for text, score in zip(rec_texts, rec_scores):
