@@ -1,106 +1,120 @@
-# 📖 UniCorpusBuilder Demo — README
+# UniCorpusBuilder
 
-**Universal Multilingual Scraper & Corpus Builder — Demo Version**
+**Universal multilingual scraper and corpus builder for low-resource languages.**
 
-This is a **demonstration version** of the full UniCorpusBuilder project. It includes the core scraping infrastructure for collecting text data from news websites, social networks (VK, Telegram, Rutube), Wikipedia dumps, and documents for low-resource languages.
+This is a **demonstration version** of the full UniCorpusBuilder project. It includes the core infrastructure for collecting text data from news websites, social networks (VK, Telegram, Rutube), Wikipedia dumps, and office documents for low-resource languages.
 
 **Repository:** [https://github.com/CodeHunterOfficial/unicorpusbuilderdemo](https://github.com/CodeHunterOfficial/unicorpusbuilderdemo)
 
-The full project will include additional features such as:
+The full version will include additional features:
 - Data annotation and labeling tools
-- Advanced corpus creation and management
-- Comprehensive testing suite (unit, integration, E2E)
+- Advanced corpus management
+- Comprehensive test suite (unit, integration, E2E)
 - Quality assurance pipelines
 - Model training utilities
 
 ---
 
-## 🌍 Supported Languages
+## Supported Languages
 
-| Code | Language | Sources |
-|------|----------|---------|
-| `tg` | Tajik | 10+ news sites, VK |
-| `tt` | Tatar | 13+ news sites, VK, Telegram |
-| `ba` | Bashkir | 2 news sites, VK |
-| `ru` | Russian | 2 news sites (ria.ru, mk.ru) |
-| `os` | Ossetian | 6 news sites, VK |
-| `uz` | Uzbek | 1 news site |
-| `udm` | Udmurt | VK |
-| `en` | English | — |
+| Code  | Language  | Sources                            |
+|-------|-----------|------------------------------------|
+| `tt`  | Tatar     | 14 news sites, VK, Telegram        |
+| `tg`  | Tajik     | 14 news sites, VK                  |
+| `os`  | Ossetian  | 6 news sites, VK                   |
+| `ba`  | Bashkir   | 2 news sites, VK                   |
+| `ru`  | Russian   | 2 news sites (ria.ru, mk.ru)       |
+| `uz`  | Uzbek     | 1 news site                        |
+| `udm` | Udmurt    | VK                                 |
+| `en`  | English   | —                                  |
+
+The article accompanying this repository focuses on four languages: Tatar, Tajik, Bashkir, and Ossetian.
 
 ---
 
-## 📁 Project Structure
+## Project Structure
 
 ```
 scraper_project/
-├── main.py                    # Main entry point
-├── app.py                     # Streamlit Dashboard
-├── logger_setup.py            # Logging configuration
-├── show_project_structure.py  # Project structure viewer
+├── main.py                       # Universal entry point
+├── app.py                        # Streamlit dashboard
+├── logger_setup.py               # Logging configuration
+├── requirements.txt              # Python dependencies
 │
-├── config/                    # Configuration
-│   ├── universal.yaml         # Entry point (includes)
-│   ├── global.yaml            # Global settings
-│   ├── languages.yaml         # Language packages
-│   ├── loader.py              # Config loader
-│   ├── sites_tt.yaml          # Tatar sites
-│   ├── sites_tg.yaml          # Tajik sites
-│   ├── sites_ba.yaml          # Bashkir sites
-│   ├── sites_ru.yaml          # Russian sites
-│   ├── sites_os.yaml          # Ossetian sites
-│   └── sites_uz.yaml          # Uzbek sites
+├── config/                       # YAML configuration
+│   ├── universal.yaml            # Entry point (includes)
+│   ├── global.yaml               # Global settings
+│   ├── languages.yaml            # Language packages
+│   ├── loader.py                 # Config loader
+│   ├── sites_tt.yaml             # Tatar sites
+│   ├── sites_tg.yaml             # Tajik sites
+│   ├── sites_ba.yaml             # Bashkir sites
+│   ├── sites_ru.yaml             # Russian sites
+│   ├── sites_os.yaml             # Ossetian sites
+│   └── sites_uz.yaml             # Uzbek sites
 │
-├── pipeline/                  # Core pipeline
-│   ├── pipeline_core.py       # Crawling and discovery
-│   └── pipeline_extraction.py # Content extraction
+├── pipeline/                     # Core pipeline
+│   ├── pipeline_core.py          # Crawling and discovery
+│   └── pipeline_extraction.py    # Content extraction
 │
-├── social/                    # Social networks
-│   ├── vk_scraper.py          # VK synchronous
-│   ├── vk_scraper_async.py    # VK asynchronous
-│   ├── telegram_scraper.py    # Telegram
-│   ├── rutube_scraper.py      # Rutube
-│   ├── config/                # Social configs
-│   │   ├── social.yaml        # Entry point
-│   │   ├── vk_tt.yaml         # VK Tatar groups
-│   │   ├── vk_tg.yaml         # VK Tajik groups
-│   │   ├── vk_ba.yaml         # VK Bashkir groups
-│   │   ├── vk_os.yaml         # VK Ossetian groups
-│   │   └── vk_udm.yaml        # VK Udmurt groups
+├── social/                       # Social network scrapers
+│   ├── vk_scraper.py             # VK (synchronous)
+│   ├── vk_scraper_async.py       # VK (asynchronous)
+│   ├── telegram_scraper.py       # Telegram
+│   ├── rutube_scraper.py         # Rutube
+│   ├── config/                   # Social configs
+│   │   ├── social.yaml           # Entry point
+│   │   ├── vk_tt.yaml            # VK Tatar groups
+│   │   ├── vk_tg.yaml            # VK Tajik groups
+│   │   ├── vk_ba.yaml            # VK Bashkir groups
+│   │   ├── vk_os.yaml            # VK Ossetian groups
+│   │   └── vk_udm.yaml           # VK Udmurt groups
 │   └── scripts/
-│       └── build_vk_dataset.py # VK data unification
+│       └── build_vk_dataset.py   # VK data unification
 │
-├── wiki/                      # Wikipedia
-│   ├── wiki_dump_parser.py    # Dump parser
-│   └── tat_transliterator.py  # Tatar transliteration
+├── wiki/                         # Wikipedia
+│   ├── wiki_dump_parser.py       # Dump parser
+│   └── tat_transliterator.py     # Tatar transliteration
 │
-├── documents/                 # Documents
-│   ├── universal_doc_parser.py # Universal document parser
-│   └── doc_config.yaml         # Document configuration
+├── documents/                    # Documents
+│   ├── universal_doc_parser.py   # Universal document parser
+│   └── doc_config.yaml           # Document configuration
 │
-├── corpus/                    # Corpus
-│   └── build_corpus.py        # Corpus builder
+├── corpus/                       # Corpus
+│   └── build_corpus.py           # Corpus builder
 │
-└── output/                    # Results
-    ├── news/                  # News articles
-    ├── social/                # Social media data
-    ├── wiki/                  # Wikipedia dumps
-    ├── documents/             # Document data
-    └── corpus/                # Unified corpora
+├── tools/                        # Analysis and reproducibility scripts
+│   ├── analyze_configs.py        # YAML configuration statistics
+│   ├── list_sites.py             # Sources per language
+│   ├── hf_count.py               # Documents, characters, tokens per dataset
+│   ├── hf_quality.py             # Language purity and near-duplicates
+│   ├── strategy_hitrate.py       # Strategy distribution and ROUGE-L
+│   ├── benchmark_trafilatura.py  # Comparison with Trafilatura
+│   ├── inspect_binary_labels.py  # Class distribution in binary datasets
+│   ├── add_tokenizer.py          # Add mBERT tokenizer counts
+│   ├── diagnose_khovar.py        # Discovery diagnostics (example)
+│   └── README.md                 # Instructions for reproduction
+│
+└── output/                       # Results (gitignored)
+    ├── news/                     # News articles
+    ├── social/                   # Social media data
+    ├── wiki/                     # Wikipedia dumps
+    ├── documents/                # Document data
+    └── corpus/                   # Unified corpora
 ```
 
 ---
 
-## 🔧 Installation
+## Installation
 
-### 1. Clone the Repository
+### 1. Clone the repository
 
 ```bash
 git clone https://github.com/CodeHunterOfficial/unicorpusbuilderdemo.git
 cd unicorpusbuilderdemo
 ```
 
-### 2. Create Virtual Environment
+### 2. Create virtual environment
 
 ```bash
 python -m venv .venv
@@ -108,11 +122,11 @@ python -m venv .venv
 # Windows
 .venv\Scripts\activate
 
-# Linux/Mac
+# Linux/macOS
 source .venv/bin/activate
 ```
 
-### 3. Install Dependencies
+### 3. Install dependencies
 
 ```bash
 pip install -r requirements.txt
@@ -130,9 +144,9 @@ Download from [GitHub Tesseract](https://github.com/UB-Mannheim/tesseract/wiki) 
 
 ---
 
-## ⚙️ Configuration
+## Configuration
 
-### Main Configuration Files
+### Main configuration files
 
 | File | Purpose |
 |------|---------|
@@ -142,7 +156,7 @@ Download from [GitHub Tesseract](https://github.com/UB-Mannheim/tesseract/wiki) 
 | `config/sites_*.yaml` | Site profiles by language |
 | `social/config/social.yaml` | Social media configuration |
 
-### Configuring VK Token
+### Configuring VK token
 
 Edit `social/config/social.yaml`:
 
@@ -175,21 +189,16 @@ rutube:
 
 ---
 
-## 📋 Commands
+## Usage
 
-### 1. Check Site Configuration
+### Check site configuration
 
 ```bash
-# Check configuration for a site
 python main.py config https://khovar.tj/
-
-# With a different config file
 python main.py config https://khovar.tj/ config/universal.yaml
 ```
 
----
-
-### 2. News Pipeline
+### News pipeline
 
 ```bash
 # Full pipeline (discovery + extraction)
@@ -202,9 +211,7 @@ python main.py pipeline https://khovar.tj/ 50
 python pipeline/pipeline_extraction.py config/universal.yaml https://khovar.tj/ 50
 ```
 
----
-
-### 3. Bulk Pipeline
+### Bulk pipeline
 
 ```bash
 # All Tajik sites
@@ -215,57 +222,40 @@ python main.py bulk tt 100
 
 # All sites
 python main.py bulk all
-
-# All sites with limit
 python main.py bulk all 30
 ```
 
----
+### Social network scrapers
 
-### 4. Social Networks
-
-#### VK
+**VK:**
 
 ```bash
-# All Tatar groups from config
 python main.py social vk --lang tt --max-posts 100
-
-# Specific groups
 python main.py social vk --domains club1135692 irta_tv --lang ba --max-posts 10
-
-# With token
 python main.py social vk --token your_token --domains allahtan --lang tt --max-posts 5
 ```
 
-#### Telegram
+**Telegram:**
 
 ```bash
-# All Tatar channels
 python main.py social telegram --lang tt --max-posts 100
-
-# Specific channel
 python main.py social telegram --channels vatantat --lang tt --max-posts 50
 ```
 
-#### Rutube
+**Rutube:**
 
 ```bash
-# Comments from a video
 python main.py social rutube --video-id video_id_1 --max-comments 100
-
-# Playlist
 python main.py social rutube --playlist-id playlist_id_1 --max-videos 10 --max-comments 50
 ```
 
-#### All Social Networks
+**All social scrapers:**
 
 ```bash
 python main.py social all --lang tt --max-posts 100
 ```
 
----
-
-### 5. Wikipedia
+### Wikipedia dump parser
 
 ```bash
 # Tajik Wikipedia
@@ -278,24 +268,20 @@ python main.py wiki "https://dumps.wikimedia.org/ttwiki/latest/ttwiki-latest-pag
 python main.py wiki "https://dumps.wikimedia.org/bawiki/latest/bawiki-latest-pages-articles.xml.bz2" bawiki --max-articles 500
 ```
 
----
-
-### 6. Documents
+### Document parser
 
 ```bash
 # Process a folder
-python main.py docs D:/FinSoft
+python main.py docs ./documents_to_parse
 
 # With output directory
-python main.py docs D:/FinSoft output/documents
+python main.py docs ./documents_to_parse output/documents
 
 # Direct script usage
-python documents/universal_doc_parser.py D:/FinSoft -c documents/doc_config.yaml -o output/documents
+python documents/universal_doc_parser.py ./documents_to_parse -c documents/doc_config.yaml -o output/documents
 ```
 
----
-
-### 7. Corpus Building
+### Corpus builder
 
 ```bash
 # Full corpus from all sources
@@ -311,27 +297,19 @@ python main.py corpus --lang tg --sources social --social-sources vk,rutube
 python main.py corpus --lang tg --sources all --output corpus_tg.jsonl
 ```
 
----
-
-### 8. Build Unified VK Dataset
+### Build unified VK dataset
 
 ```bash
 # No filter
 python main.py build-vk
 
-# Tajik only
+# Filter by language
 python main.py build-vk --lang tg
-
-# Ossetian only
 python main.py build-vk --lang os
-
-# Udmurt only
 python main.py build-vk --lang udm
 ```
 
----
-
-### 9. Streamlit Dashboard
+### Streamlit dashboard
 
 ```bash
 streamlit run app.py
@@ -339,7 +317,39 @@ streamlit run app.py
 
 ---
 
-## 📊 Output Structure
+## Analysis scripts (`tools/`)
+
+The `tools/` directory contains scripts for reproducing the numerical results
+presented in the accompanying article. See [`tools/README.md`](tools/README.md)
+for details.
+
+Quick start:
+
+```bash
+python tools/analyze_configs.py
+python tools/list_sites.py
+python tools/hf_count.py
+python tools/hf_quality.py --sample 2000 --near-dups
+python tools/strategy_hitrate.py
+python tools/benchmark_trafilatura.py
+python tools/inspect_binary_labels.py
+```
+
+| Script | Purpose | Output |
+|--------|---------|--------|
+| `analyze_configs.py` | YAML configuration statistics | stdout |
+| `list_sites.py` | Sources grouped by language | stdout |
+| `hf_count.py` | Documents, characters, tokens per dataset | `hf_count*.csv` |
+| `hf_quality.py` | Language purity and near-duplicates | `hf_quality*.csv` |
+| `strategy_hitrate.py` | First-matching strategy distribution and ROUGE-L | `strategy_*.csv` |
+| `benchmark_trafilatura.py` | Direct comparison with Trafilatura | `trafilatura_*.csv` |
+| `inspect_binary_labels.py` | Class distribution in binary datasets | stdout |
+| `add_tokenizer.py` | Add mBERT tokenizer counts | `hf_count_v2.csv` |
+| `diagnose_khovar.py` | Discovery diagnostics for khovar.tj | stdout |
+
+---
+
+## Output structure
 
 ```
 output/
@@ -363,32 +373,35 @@ output/
 
 ---
 
-## 🧩 Key Features
+## Key features
 
-1. **Auto-detection of site families** — np_widget, WordPress, RFE/RL, Nuxt, Drupal
-2. **Multiple extraction strategies** — meta tags, CSS selectors, JSON-LD, regex
+1. **Site engine auto-detection** — np_widget, WordPress, RFE/RL, Nuxt, Drupal
+2. **Multi-strategy extraction** — meta tags, CSS selectors, JSON-LD, regex
 3. **Language filtering** — noise words, stopwords, localized months
 4. **Transliteration** — Tatar Latin → Cyrillic
 5. **OCR** — text recognition in images
 6. **Archive support** — ZIP, RAR, 7z, TAR
 7. **API sources** — JSON API support (president.tj)
+8. **Reproducible analysis** — dedicated `tools/` scripts for every reported metric
 
 ---
 
-## ⚠️ Important Notes
+## Important notes
 
-### Sensitive Data
+### Sensitive data
 
 This demo version contains **placeholder values** for:
+
 - VK tokens
 - Telegram API credentials
 - Rutube video/playlist IDs
 
 **Do not commit real credentials to the repository.**
 
-### Configuration Files
+### Configuration files
 
 The configuration files contain:
+
 - Site names and URLs
 - VK group/public names in their original languages
 - Selector patterns for web scraping
@@ -397,39 +410,40 @@ These are **demonstration examples** and may need adjustment for production use.
 
 ---
 
-## 📄 License
+## Data availability
 
-This project is licensed under the **MIT License**.
+The corpora collected using this system are published on Hugging Face:
 
-### MIT License
+- [TatarNLPWorld](https://huggingface.co/TatarNLPWorld)
+- [TajikNLPWorld](https://huggingface.co/TajikNLPWorld)
+- [BashkirNLPWorld](https://huggingface.co/BashkirNLPWorld)
+- [OssetianNLPWorld](https://huggingface.co/OssetianNLPWorld)
+
+All collections follow the practice adopted in corpus linguistics
+(HPLT, OSCAR projects). Rights to the texts belong to their authors and
+publishers; licenses (MIT, CC BY-SA 4.0, CC BY 4.0) apply only to the data
+structure, metadata, and annotations created by the authors. A
+notice-and-takedown procedure is in effect.
+
+---
+
+## Citation
+
+If you use this code or the collected corpora in your research, please cite:
 
 ```
-MIT License
-
-Copyright (c) 2026 CodeHunterOfficial
-
-Permission is hereby granted, free of charge, to any person obtaining a copy
-of this software and associated documentation files (the "Software"), to deal
-in the Software without restriction, including without limitation the rights
-to use, copy, modify, merge, publish, distribute, sublicense, and/or sell
-copies of the Software, and to permit persons to whom the Software is
-furnished to do so, subject to the following conditions:
-
-The above copyright notice and this permission notice shall be included in all
-copies or substantial portions of the Software.
-
-THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR
-IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY,
-FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL THE
-AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER
-LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM,
-OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
-SOFTWARE.
+Arabov M.K. Universal scalable architecture for text collection and annotation
+for low-resource languages: a multi-strategy approach to metadata extraction.
+Information Processes, 2026.
 ```
 
-### Third-Party Licenses
+---
 
-This project uses the following third-party libraries:
+## License
+
+This project is licensed under the **MIT License**. See [LICENSE](LICENSE) for details.
+
+### Third-party licenses
 
 | Library | License |
 |---------|---------|
@@ -456,7 +470,7 @@ This project uses the following third-party libraries:
 
 ---
 
-## 🤝 Contributing
+## Contributing
 
 This is a demo version. The full project will be released separately.
 
@@ -469,11 +483,10 @@ For contributions:
 
 ---
 
-## 📧 Contact
+## Contact
 
 - **GitHub:** [CodeHunterOfficial](https://github.com/CodeHunterOfficial)
 - **Repository:** [https://github.com/CodeHunterOfficial/unicorpusbuilderdemo](https://github.com/CodeHunterOfficial/unicorpusbuilderdemo)
-
 ---
 
 ## 🔮 Future Plans (Full Version)

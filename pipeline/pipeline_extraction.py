@@ -1,15 +1,12 @@
 # pipeline/pipeline_extraction.py
 from __future__ import annotations
-import sys
-import os
-sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
 import json
 import os
 import re
-import time
-import hashlib
+import sys
 import threading
+import time
 from concurrent.futures import ThreadPoolExecutor, as_completed
 from typing import Any, Dict, Iterable, List, Optional, Set
 from urllib.parse import urlparse
@@ -17,7 +14,9 @@ from urllib.parse import urlparse
 from bs4 import BeautifulSoup, Tag
 from tqdm import tqdm
 
-# Imports from Part 1 (core + all utilities)
+# Add project root to sys.path so that `pipeline` and `config` are importable
+sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
+
 from pipeline.pipeline_core import (
     PipelineEngine,
     abs_url,
@@ -38,7 +37,6 @@ from pipeline.pipeline_core import (
 
 from logger_setup import get_file_logger
 
-# Initialize file-only logger
 logger = get_file_logger("pipeline_extraction", "logs/pipeline_extraction.log")
 
 
@@ -48,16 +46,23 @@ logger = get_file_logger("pipeline_extraction", "logs/pipeline_extraction.log")
 
 class ExtractionEngine(PipelineEngine):
     """
-    Inherits all Part1 infrastructure (config loading, HTTP, discovery...)
-    and adds deep extraction of article fields.
+    Extends PipelineEngine with deep extraction of article fields.
+
+    Inherits config loading, HTTP session handling, and page discovery
+    from the base class; adds metadata extraction (title, date, author,
+    category, image) and body text extraction.
     """
 
     # -------------------------------------------------
-    # JSON-LD / author helpers
+    # JSON-LD helpers
     # -------------------------------------------------
 
     def jsonld_to_author(self, data: Any) -> Optional[str]:
-        """Совместимость: рекурсивный обход JSON-LD в поисках author.name."""
+        """
+        Recursively walk a JSON-LD structure and return the first author name.
+
+        Kept for backwards compatibility with earlier callers.
+        """
         try:
             if isinstance(data, dict):
                 typ = data.get("@type")
@@ -96,10 +101,13 @@ class ExtractionEngine(PipelineEngine):
             pass
         return None
 
-    # --- НОВОЕ: устойчивый парсинг JSON-LD + regex-фолбэк ---
-
     def _jsonld_iter(self, soup):
-        """Итерирует по всем JSON-LD блокам: (raw_text, parsed_or_None)."""
+        """
+        Yield (raw_text, parsed_or_None) for every JSON-LD block in the document.
+
+        A None value for `parsed` means the block could not be parsed as JSON;
+        callers may still apply a regex fallback on the raw text.
+        """
         for tag in soup.find_all("script", type="application/ld+json"):
             raw = tag.get_text(strip=True)
             if not raw:
@@ -112,7 +120,7 @@ class ExtractionEngine(PipelineEngine):
             yield raw, parsed
 
     def _jsonld_find_recursive(self, obj, key):
-        """Рекурсивно ищет ключ в распарсенном JSON-LD."""
+        """Recursively search a parsed JSON-LD structure for the first truthy value of `key`."""
         if isinstance(obj, dict):
             if key in obj and obj[key]:
                 return obj[key]
@@ -129,11 +137,13 @@ class ExtractionEngine(PipelineEngine):
 
     def extract_jsonld_author(self, soup) -> Optional[str]:
         """
-        Автор из JSON-LD.
-        Работает с валидным JSON и с битым (regex-фолбэк).
+        Extract the author name from JSON-LD.
+
+        Uses the parsed structure when possible and falls back to a regex
+        over the raw block when the JSON is malformed.
         """
         for raw, parsed in self._jsonld_iter(soup):
-            # 1) Валидный JSON
+            # Preferred path: parse the JSON and walk the structure
             if parsed is not None:
                 author = self._jsonld_find_recursive(parsed, "author")
                 if author:
@@ -148,7 +158,7 @@ class ExtractionEngine(PipelineEngine):
                             if isinstance(a, str) and a.strip():
                                 return clean_text(a)
 
-            # 2) Regex-фолбэк для битого JSON
+            # Fallback: regex over the raw text for malformed JSON
             m = re.search(
                 r'"author"\s*:\s*\[\s*\{[^}]*?"name"\s*:\s*"([^"]+)"',
                 raw, re.DOTALL,
@@ -167,8 +177,10 @@ class ExtractionEngine(PipelineEngine):
 
     def extract_jsonld_date(self, soup) -> Optional[str]:
         """
-        Дата из JSON-LD.
-        Работает с валидным JSON и с битым (regex-фолбэк).
+        Extract the publication date from JSON-LD.
+
+        Prefers `datePublished`, falls back to `dateModified`. Uses a regex
+        over the raw block when the JSON is malformed.
         """
         for raw, parsed in self._jsonld_iter(soup):
             if parsed is not None:
@@ -190,6 +202,7 @@ class ExtractionEngine(PipelineEngine):
     # -------------------------------------------------
 
     def extract_author_regex(self, soup: BeautifulSoup, site_cfg: Dict[str, Any]) -> Optional[str]:
+        """Extract the author using regex patterns applied to the full visible text."""
         global_text = clean_text(soup.get_text(" ", strip=True))
         patterns = site_cfg.get("author_regex_patterns") or [
             r"(?:Author|By|From\s+the\s+author|Author|Prepared(?:by)?|Text\s+author)\s*[:\-]?\s*([A-Za-zА-Яа-яЁёӨөҮүҚқҒғҲҳӢӣЪъІіЇї'’\-\.\s]{2,120})",
@@ -204,6 +217,7 @@ class ExtractionEngine(PipelineEngine):
         return None
 
     def extract_author_from_soup(self, soup: BeautifulSoup, site_cfg: Dict[str, Any], url: str) -> Optional[str]:
+        """Run the configured author-extraction strategy chain and return the first non-empty result."""
         strategies = site_cfg.get("author_strategy") or self.global_cfg().get(
             "author_strategies_order"
         ) or [
@@ -218,6 +232,7 @@ class ExtractionEngine(PipelineEngine):
         ]
 
         def _looks_like_json(val: str) -> bool:
+            """Heuristic guard: reject values that are probably raw JSON-LD, not an author name."""
             if not val:
                 return False
             s = val.strip()
@@ -236,14 +251,14 @@ class ExtractionEngine(PipelineEngine):
                 except Exception:
                     el = None
                 if el:
-                    # Пропускаем <script> — там JSON-LD, не автор
+                    # Skip <script> nodes; they hold JSON-LD, not a plain author name.
                     if el.name == "script":
                         continue
                     if el.name == "meta" and el.get("content"):
                         val = clean_text(el.get("content"))
                     else:
                         val = clean_text(el.get_text(" ", strip=True))
-                    # Защита: результат не должен быть JSON
+                    # Guard against accidentally returning a JSON blob.
                     if val and not _looks_like_json(val):
                         if len(val) < 300:
                             return val
@@ -320,6 +335,7 @@ class ExtractionEngine(PipelineEngine):
         order: List[str],
         mapping: Optional[Dict[str, Any]] = None,
     ) -> Optional[str]:
+        """Try each strategy name in `order` until one returns a value; strip a leading label."""
         mapping = mapping or {}
 
         for key in order:
@@ -349,6 +365,7 @@ class ExtractionEngine(PipelineEngine):
     # -------------------------------------------------
 
     def extract_title(self, soup: BeautifulSoup, site_cfg: Dict[str, Any]) -> Optional[str]:
+        """Return the article title from configured selectors, falling back to <title>."""
         for sel in site_cfg.get("title_selectors", []):
             try:
                 el = self._safe_select_one(soup, sel)
@@ -376,26 +393,31 @@ class ExtractionEngine(PipelineEngine):
         locale_map: Optional[Dict[str, str]] = None,
     ) -> Optional[str]:
         """
-        Дата: сначала JSON-LD (валидный + regex-фолбэк),
-        потом CSS-селекторы (без script[ld+json]).
+        Extract the publication date.
+
+        Order of preference:
+          1. JSON-LD (`datePublished`, then `dateModified`) — parsed or via regex.
+          2. CSS selectors from the site profile, excluding any `<script>` nodes.
         """
-        # 1) JSON-LD — приоритетный источник
+        # Step 1: JSON-LD is the primary source
         jld = self.extract_jsonld_date(soup)
         if jld:
             parsed = parse_datetime_value(jld, locale_map)
             if parsed:
                 return parsed
 
-        # 2) CSS-селекторы
+        # Step 2: CSS selectors
         for sel in site_cfg.get("date_selectors", []):
-            if "ld+json" in sel:      # уже обработано выше
+            if "ld+json" in sel:
+                # Already covered by the JSON-LD pass above.
                 continue
             try:
                 el = self._safe_select_one(soup, sel)
             except Exception:
                 el = None
             if el:
-                if el.name == "script":    # защита
+                if el.name == "script":
+                    # Never read dates from script bodies; they hold JSON-LD.
                     continue
                 val = (
                     el.get("content")
@@ -413,6 +435,7 @@ class ExtractionEngine(PipelineEngine):
     # -------------------------------------------------
 
     def extract_category(self, soup: BeautifulSoup, url: str, site_cfg: Dict[str, Any]) -> Optional[str]:
+        """Extract the article category from URL patterns, CSS selectors, or URL path heuristics."""
         strategies = site_cfg.get("category_strategy") or []
 
         if "url_path_parsing" in strategies:
@@ -459,6 +482,7 @@ class ExtractionEngine(PipelineEngine):
     # -------------------------------------------------
 
     def extract_language(self, soup: BeautifulSoup, site_cfg: Dict[str, Any]) -> Optional[str]:
+        """Return the site's default language, falling back to the <html lang> attribute."""
         lang = site_cfg.get("default_language")
         if lang:
             return lang
@@ -468,6 +492,7 @@ class ExtractionEngine(PipelineEngine):
         return None
 
     def extract_image_url(self, soup: BeautifulSoup, base_url: str, site_cfg: Dict[str, Any]) -> Optional[str]:
+        """Return the main article image URL, skipping SVG assets."""
         for sel in site_cfg.get("image_selectors", []):
             try:
                 node = self._safe_select_one(soup, sel)
@@ -491,6 +516,7 @@ class ExtractionEngine(PipelineEngine):
     # -------------------------------------------------
 
     def clean_html(self, soup: BeautifulSoup, extra_remove: Optional[List[str]] = None) -> BeautifulSoup:
+        """Remove scripts, styles, and any selectors listed in `extra_remove`."""
         for sel in ["script", "style", "noscript", "iframe", "svg", "form", "button", "canvas"]:
             for node in soup.select(sel):
                 try:
@@ -508,6 +534,7 @@ class ExtractionEngine(PipelineEngine):
         return soup
 
     def extract_content_text(self, container: BeautifulSoup, noise_words: Optional[List[str]] = None) -> str:
+        """Extract paragraph-level text from a container, deduplicating identical blocks."""
         parts: List[str] = []
         seen: Set[str] = set()
         for el in container.find_all(["h1", "h2", "h3", "h4", "p", "li", "blockquote"], recursive=True):
@@ -527,6 +554,7 @@ class ExtractionEngine(PipelineEngine):
         return re.sub(r"\n{3,}", "\n\n", "\n".join(parts).strip())
 
     def extract_full_visible_text(self, soup: BeautifulSoup, noise_words: Optional[List[str]] = None) -> str:
+        """Fallback extractor: paragraph-level text across the whole document."""
         parts: List[str] = []
         seen: Set[str] = set()
         for el in soup.find_all(["h1", "h2", "h3", "h4", "p", "li", "blockquote"]):
@@ -546,6 +574,14 @@ class ExtractionEngine(PipelineEngine):
         return re.sub(r"\n{3,}", "\n\n", "\n".join(parts).strip())
 
     def find_best_content_container(self, soup: BeautifulSoup, site_cfg: Dict[str, Any]) -> BeautifulSoup:
+        """
+        Locate the container that most likely holds the article body.
+
+        Strategy:
+          1. Try configured `content_selectors` in order.
+          2. Score every `<article>`, `<main>`, `<section>`, and `<div>` by text
+             length minus link density and navigation-like penalties.
+        """
         for sel in site_cfg.get("content_selectors", []):
             try:
                 node = self._safe_select_one(soup, sel)
@@ -600,6 +636,7 @@ class ExtractionEngine(PipelineEngine):
         site_cfg: Dict[str, Any],
         locale_map: Optional[Dict[str, str]] = None,
     ) -> Dict[str, Any]:
+        """Extract all metadata fields (title, date, author, category, image, language)."""
         return {
             "title": self.extract_title(soup, site_cfg),
             "date": self.extract_date(soup, site_cfg, locale_map=locale_map),
@@ -610,16 +647,22 @@ class ExtractionEngine(PipelineEngine):
         }
 
     def extract_article_fields(self, html: str, url: str) -> Dict[str, Any]:
+        """
+        Extract a full article record (metadata + body text) from raw HTML.
+
+        Important: `<script>` tags must remain in the tree until metadata is
+        extracted, because both author and date may come from JSON-LD. Only
+        after `extract_page_meta` has run does the HTML get cleaned.
+        """
         soup = BeautifulSoup(html, "html.parser")
         site_cfg = self.site_cfg(url)
         locale_map = self.get_date_locale_map(url)
         noise_words = site_cfg.get("_noise_words", [])
 
-        # ВАЖНО: НЕ удаляем <script>, пока не извлекли JSON-LD
-        # (author и date берутся из JSON-LD раньше, чем почистим HTML)
+        # Metadata extraction must run before removing <script> tags.
         page_meta = self.extract_page_meta(soup, url, site_cfg, locale_map=locale_map)
 
-        # Теперь чистим — удаляем скрипты, стили, баннеры
+        # Now it is safe to strip scripts, styles, and configured noise nodes.
         soup = self.clean_html(soup, extra_remove=site_cfg.get("remove_selectors", []))
 
         container = self.find_best_content_container(soup, site_cfg)
@@ -665,6 +708,7 @@ class ExtractionEngine(PipelineEngine):
     # -------------------------------------------------
 
     def _amp_url_from(self, url: str) -> Optional[str]:
+        """Build an AMP URL for the given article URL according to the site's amp_mode."""
         site_cfg = self.site_cfg(url)
         mode = site_cfg.get("amp_mode", "none")
         if mode == "none":
@@ -679,6 +723,7 @@ class ExtractionEngine(PipelineEngine):
         return None
 
     def fetch_article_html(self, url: str) -> Optional[str]:
+        """Fetch the article; if the primary request fails, try the AMP variant."""
         try:
             return self.fetch_html(url)
         except Exception:
@@ -694,6 +739,7 @@ class ExtractionEngine(PipelineEngine):
         return None
 
     def extract_item_from_url(self, url: str, fallback: Optional[Dict[str, Any]] = None) -> Optional[Dict[str, Any]]:
+        """Fetch a single article and merge missing fields from the discovery-stage fallback."""
         if not self.can_fetch_robots(url):
             return fallback
 
@@ -719,6 +765,7 @@ class ExtractionEngine(PipelineEngine):
     # -------------------------------------------------
 
     def save_items_json(self, items: List[Dict[str, Any]], output_json: str) -> Dict[str, Any]:
+        """Write the collected items to a single JSON file with a top-level `items` key."""
         payload = {"items": items}
         with open(output_json, "w", encoding="utf-8") as f:
             json.dump(payload, f, ensure_ascii=False, indent=2)
@@ -733,6 +780,12 @@ class ExtractionEngine(PipelineEngine):
         candidates: Dict[str, Dict[str, Any]],
         output_jsonl: str,
     ) -> List[Dict[str, Any]]:
+        """
+        Download and extract every candidate URL concurrently.
+
+        Deduplicates results by URL and content hash, and appends each
+        unique item to `output_jsonl` as it is produced.
+        """
         seen_hashes: Set[str] = set()
         seen_urls: Set[str] = set()
         items: List[Dict[str, Any]] = []
@@ -799,6 +852,7 @@ class ExtractionEngine(PipelineEngine):
         context_rubrics: Optional[Iterable[str]] = None,
         max_items_override: Optional[int] = None,
     ) -> Dict[str, Any]:
+        """Run discovery followed by extraction and write the results to JSONL and JSON."""
         limits = self.limits_cfg()
         if max_items_override is not None:
             limits["max_items"] = max_items_override
@@ -848,6 +902,7 @@ def run(
     context_rubrics: Optional[Iterable[str]] = None,
     max_items: Optional[int] = None,
 ) -> Dict[str, Any]:
+    """Convenience wrapper used by CLI entry points and by other modules."""
     engine = ExtractionEngine(yaml_path=yaml_path)
 
     if output_jsonl is None or output_json is None:
@@ -869,9 +924,6 @@ def run(
 
 
 if __name__ == "__main__":
-    import sys
-    import json
-
     yaml_path = "config/universal.yaml"
     start = "https://khovar.tj/"
     out_jsonl = None

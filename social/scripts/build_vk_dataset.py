@@ -1,4 +1,4 @@
-# D:\Science\TajikPersianNLP\scraper_project\social\scripts\build_vk_dataset.py
+# social/scripts/build_vk_dataset.py
 """
 Build a cleaned, unified dataset from raw VK posts and comments
 with strict language filtering.

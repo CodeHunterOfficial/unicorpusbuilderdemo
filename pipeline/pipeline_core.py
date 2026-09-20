@@ -1263,8 +1263,6 @@ class PipelineEngine:
 # =====================================================
 
 if __name__ == "__main__":
-    import sys
-    import json
 
     # Default values
     yaml_path = "config/universal.yaml"

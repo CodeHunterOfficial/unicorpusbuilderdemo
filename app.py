@@ -10,7 +10,6 @@ import threading
 import re
 from datetime import datetime
 from pathlib import Path
-from typing import Dict, Any, Optional, List
 import pandas as pd
 import yaml
 
@@ -19,8 +18,6 @@ from config.loader import (
     load_modular_config, get_site_key, get_site_config,
     load_social_config
 )
-from pipeline.pipeline_core import PipelineEngine
-from pipeline.pipeline_extraction import ExtractionEngine, run as run_extraction
 from logger_setup import get_file_logger
 
 logger = get_file_logger("streamlit_app", "logs/streamlit_app.log")
@@ -1013,7 +1010,6 @@ elif mode == "📖 Documentation & Examples":
                     # Direct script usage (if needed)
                     python pipeline/pipeline_core.py config/universal.yaml https://khovar.tj/
                     python pipeline/pipeline_extraction.py config/universal.yaml https://khovar.tj/ "" 50
-                    python config/loader.py config/universal.yaml https://khovar.tj/
                             """)
 
     with st.expander("📱 Social Scrapers (VK, Telegram, Rutube)"):

@@ -140,9 +140,6 @@ class WikiDumpParser:
     def extract_categories(self, text: str) -> List[str]:
         cats = []
         patterns = [
-            r'\[Category:\s*([^|]+)',
-            r'\[Category:\s*([^|]+)',
-            r'\[Category:\s*([^|]+)',
             r'\[Category:\s*([^|]+)'
         ]
         for pat in patterns:

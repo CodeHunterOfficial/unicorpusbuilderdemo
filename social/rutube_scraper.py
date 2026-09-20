@@ -29,7 +29,6 @@ from logger_setup import get_file_logger
 
 logger = get_file_logger("rutube_scraper", "logs/rutube_scraper.log")
 
-BASE_URL = "https://rutube.ru"
 OUTPUT_DIR = os.path.join("output", "social")
 
 

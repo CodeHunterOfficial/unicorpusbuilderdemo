@@ -1,4 +1,4 @@
-# wiki_analyzers/transliterator.py
+# wiki/tat_transliterator.py
 """Tatar Latin → Cyrillic transliteration."""
 
 import re
