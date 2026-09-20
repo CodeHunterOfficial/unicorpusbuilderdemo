@@ -114,8 +114,9 @@ sites:
       - "pattern_fallback"
     author_strategy:
       - "meta_tag"
-      - "class_selector"
       - "json_ld_graph"
+      - "json_ld_simple"
+      - "class_selector"
       - "regex_in_content"
       - "default_fallback"
     rubric_selectors:
@@ -142,6 +143,7 @@ sites:
       - "a[href*='/page/']"
     title_selectors:
       - "h1.single-header__title"
+      - ".single-header__title"
       - 'meta[property="og:title"]'
       - "title"
     date_selectors:
@@ -151,8 +153,13 @@ sites:
       - "time"
     author_selectors:
       - 'meta[name="author"]'
+      - 'meta[name="Author"]'
+      - 'meta[property="article:author"]'
+      - 'meta[name="twitter:data1"]'
+      - ".content__author"
       - ".single-header__author a"
       - ".entry-author a"
+      - "[class*='author']"
     category_selectors:
       - ".breadcrumb a"
       - ".breadcrumb__item a"
@@ -188,7 +195,7 @@ sites:
       - ".jpg"
       - ".png"
       - ".pdf"
-
+      
   # ============================================================
   # mahdug.ru — Ossetian literary portal
   # ============================================================

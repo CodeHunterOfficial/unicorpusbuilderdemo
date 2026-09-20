@@ -41,6 +41,7 @@ from logger_setup import get_file_logger
 # Initialize file-only logger
 logger = get_file_logger("pipeline_extraction", "logs/pipeline_extraction.log")
 
+
 # =====================================================
 # Extraction Engine
 # =====================================================
@@ -56,12 +57,14 @@ class ExtractionEngine(PipelineEngine):
     # -------------------------------------------------
 
     def jsonld_to_author(self, data: Any) -> Optional[str]:
+        """Совместимость: рекурсивный обход JSON-LD в поисках author.name."""
         try:
             if isinstance(data, dict):
                 typ = data.get("@type")
                 if isinstance(typ, list):
                     typ = " ".join(map(str, typ))
-                if typ in ("NewsArticle", "Article", "ReportageNewsArticle", "BlogPosting", "WebPage"):
+                if typ in ("NewsArticle", "Article", "ReportageNewsArticle",
+                           "BlogPosting", "WebPage"):
                     author = data.get("author")
                     if isinstance(author, dict) and author.get("name"):
                         return clean_text(author["name"])
@@ -93,6 +96,99 @@ class ExtractionEngine(PipelineEngine):
             pass
         return None
 
+    # --- НОВОЕ: устойчивый парсинг JSON-LD + regex-фолбэк ---
+
+    def _jsonld_iter(self, soup):
+        """Итерирует по всем JSON-LD блокам: (raw_text, parsed_or_None)."""
+        for tag in soup.find_all("script", type="application/ld+json"):
+            raw = tag.get_text(strip=True)
+            if not raw:
+                continue
+            parsed = None
+            try:
+                parsed = json.loads(raw)
+            except Exception:
+                parsed = None
+            yield raw, parsed
+
+    def _jsonld_find_recursive(self, obj, key):
+        """Рекурсивно ищет ключ в распарсенном JSON-LD."""
+        if isinstance(obj, dict):
+            if key in obj and obj[key]:
+                return obj[key]
+            for v in obj.values():
+                r = self._jsonld_find_recursive(v, key)
+                if r:
+                    return r
+        elif isinstance(obj, list):
+            for it in obj:
+                r = self._jsonld_find_recursive(it, key)
+                if r:
+                    return r
+        return None
+
+    def extract_jsonld_author(self, soup) -> Optional[str]:
+        """
+        Автор из JSON-LD.
+        Работает с валидным JSON и с битым (regex-фолбэк).
+        """
+        for raw, parsed in self._jsonld_iter(soup):
+            # 1) Валидный JSON
+            if parsed is not None:
+                author = self._jsonld_find_recursive(parsed, "author")
+                if author:
+                    if isinstance(author, str) and author.strip():
+                        return clean_text(author)
+                    if isinstance(author, dict) and author.get("name"):
+                        return clean_text(author["name"])
+                    if isinstance(author, list):
+                        for a in author:
+                            if isinstance(a, dict) and a.get("name"):
+                                return clean_text(a["name"])
+                            if isinstance(a, str) and a.strip():
+                                return clean_text(a)
+
+            # 2) Regex-фолбэк для битого JSON
+            m = re.search(
+                r'"author"\s*:\s*\[\s*\{[^}]*?"name"\s*:\s*"([^"]+)"',
+                raw, re.DOTALL,
+            )
+            if m:
+                return clean_text(m.group(1))
+
+            m = re.search(
+                r'"@type"\s*:\s*"Person"\s*,\s*"name"\s*:\s*"([^"]+)"',
+                raw,
+            )
+            if m:
+                return clean_text(m.group(1))
+
+        return None
+
+    def extract_jsonld_date(self, soup) -> Optional[str]:
+        """
+        Дата из JSON-LD.
+        Работает с валидным JSON и с битым (regex-фолбэк).
+        """
+        for raw, parsed in self._jsonld_iter(soup):
+            if parsed is not None:
+                dp = self._jsonld_find_recursive(parsed, "datePublished")
+                if dp and isinstance(dp, str):
+                    return clean_text(dp)
+                dm = self._jsonld_find_recursive(parsed, "dateModified")
+                if dm and isinstance(dm, str):
+                    return clean_text(dm)
+
+            m = re.search(r'"datePublished"\s*:\s*"([^"]+)"', raw)
+            if m:
+                return clean_text(m.group(1))
+
+        return None
+
+    # -------------------------------------------------
+    # Author extraction
+    # -------------------------------------------------
+
     def extract_author_regex(self, soup: BeautifulSoup, site_cfg: Dict[str, Any]) -> Optional[str]:
         global_text = clean_text(soup.get_text(" ", strip=True))
         patterns = site_cfg.get("author_regex_patterns") or [
@@ -111,30 +207,46 @@ class ExtractionEngine(PipelineEngine):
         strategies = site_cfg.get("author_strategy") or self.global_cfg().get(
             "author_strategies_order"
         ) or [
+            "json_ld_graph",
+            "json_ld_simple",
             "meta_tag",
             "class_selector",
             "style_based",
-            "json_ld_graph",
-            "json_ld_simple",
             "regex_in_content",
             "priority_list",
             "default_fallback",
         ]
 
+        def _looks_like_json(val: str) -> bool:
+            if not val:
+                return False
+            s = val.strip()
+            if s.startswith("{") and s.endswith("}"):
+                return True
+            if s.startswith("[") and s.endswith("]"):
+                return True
+            if len(s) > 300 and ("@context" in s or "@type" in s):
+                return True
+            return False
+
         def meta_tag() -> Optional[str]:
             for sel in site_cfg.get("author_selectors", []):
-                # use safe select_one
                 try:
                     el = self._safe_select_one(soup, sel)
                 except Exception:
                     el = None
                 if el:
+                    # Пропускаем <script> — там JSON-LD, не автор
+                    if el.name == "script":
+                        continue
                     if el.name == "meta" and el.get("content"):
                         val = clean_text(el.get("content"))
                     else:
                         val = clean_text(el.get_text(" ", strip=True))
-                    if val:
-                        return val
+                    # Защита: результат не должен быть JSON
+                    if val and not _looks_like_json(val):
+                        if len(val) < 300:
+                            return val
             return None
 
         def class_selector() -> Optional[str]:
@@ -148,12 +260,18 @@ class ExtractionEngine(PipelineEngine):
                 ".media-block__title--author",
                 ".post-author",
                 ".news-author",
+                "[class*='_authors_'] [class*='_item_']",
+                "[class*='_authors_']",
+                "[class*='author']",
             ]
             for sel in selectors:
-                el = soup.select_one(sel)
+                try:
+                    el = soup.select_one(sel)
+                except Exception:
+                    el = None
                 if el:
                     txt = clean_text(el.get_text(" ", strip=True))
-                    if txt:
+                    if txt and not _looks_like_json(txt) and len(txt) < 300:
                         return txt
             return None
 
@@ -163,44 +281,16 @@ class ExtractionEngine(PipelineEngine):
                 txt = clean_text(el.get_text(" ", strip=True))
                 if not txt:
                     continue
-                if "author" in style or "byline" in style or re.search(r"author|author|author", txt, re.I):
-                    return txt
+                if "author" in style or "byline" in style:
+                    if not _looks_like_json(txt) and len(txt) < 300:
+                        return txt
             return None
 
         def json_ld_simple() -> Optional[str]:
-            for tag in soup.find_all("script", type="application/ld+json"):
-                raw = tag.get_text(strip=True)
-                if not raw:
-                    continue
-                try:
-                    data = json.loads(raw)
-                except Exception:
-                    continue
-                if isinstance(data, dict):
-                    author = data.get("author")
-                    if isinstance(author, dict) and author.get("name"):
-                        return clean_text(author["name"])
-                    if isinstance(author, list):
-                        for a in author:
-                            if isinstance(a, dict) and a.get("name"):
-                                return clean_text(a["name"])
-                            if isinstance(a, str) and a.strip():
-                                return clean_text(a)
-            return None
+            return self.extract_jsonld_author(soup)
 
         def json_ld_graph() -> Optional[str]:
-            for tag in soup.find_all("script", type="application/ld+json"):
-                raw = tag.get_text(strip=True)
-                if not raw:
-                    continue
-                try:
-                    data = json.loads(raw)
-                except Exception:
-                    continue
-                res = self.jsonld_to_author(data)
-                if res:
-                    return res
-            return None
+            return self.extract_jsonld_author(soup)
 
         def priority_list() -> Optional[str]:
             ordered = site_cfg.get("author_priority") or strategies
@@ -240,7 +330,12 @@ class ExtractionEngine(PipelineEngine):
                 val = fn()
                 if val:
                     val = clean_text(val)
-                    val = re.sub(r"^(Author|By|From the author|Author)\s*[:\-]?\s*", "", val, flags=re.I)
+                    val = re.sub(
+                        r"^(Author|By|From the author|Author)\s*[:\-]?\s*",
+                        "",
+                        val,
+                        flags=re.I,
+                    )
                     val = clean_text(val)
                     if val:
                         return val
@@ -271,8 +366,9 @@ class ExtractionEngine(PipelineEngine):
         return None
 
     # -------------------------------------------------
-    # Date (with locale_map support)
+    # Date
     # -------------------------------------------------
+
     def extract_date(
         self,
         soup: BeautifulSoup,
@@ -280,15 +376,32 @@ class ExtractionEngine(PipelineEngine):
         locale_map: Optional[Dict[str, str]] = None,
     ) -> Optional[str]:
         """
-        Parse date, applying locale_map first.
+        Дата: сначала JSON-LD (валидный + regex-фолбэк),
+        потом CSS-селекторы (без script[ld+json]).
         """
+        # 1) JSON-LD — приоритетный источник
+        jld = self.extract_jsonld_date(soup)
+        if jld:
+            parsed = parse_datetime_value(jld, locale_map)
+            if parsed:
+                return parsed
+
+        # 2) CSS-селекторы
         for sel in site_cfg.get("date_selectors", []):
+            if "ld+json" in sel:      # уже обработано выше
+                continue
             try:
                 el = self._safe_select_one(soup, sel)
             except Exception:
                 el = None
             if el:
-                val = el.get("content") or el.get("datetime") or el.get_text(" ", strip=True)
+                if el.name == "script":    # защита
+                    continue
+                val = (
+                    el.get("content")
+                    or el.get("datetime")
+                    or el.get_text(" ", strip=True)
+                )
                 if val:
                     parsed = parse_datetime_value(val, locale_map)
                     if parsed:
@@ -296,22 +409,22 @@ class ExtractionEngine(PipelineEngine):
         return None
 
     # -------------------------------------------------
-    # Category (with url_path_parsing strategy)
+    # Category
     # -------------------------------------------------
+
     def extract_category(self, soup: BeautifulSoup, url: str, site_cfg: Dict[str, Any]) -> Optional[str]:
         strategies = site_cfg.get("category_strategy") or []
-        
+
         if "url_path_parsing" in strategies:
-            # Patterns from reusable_strategies (global)
             patterns = self.root_cfg.get("reusable_strategies", {}).get(
                 "category_sources", {}).get("url_path_parsing", {}).get("patterns", [])
-            
-            # Additional language-specific patterns
+
             lang = site_cfg.get("default_language")
             if lang:
-                lang_patterns = self.root_cfg.get("languages", {}).get(lang, {}).get("category_url_patterns", [])
+                lang_patterns = self.root_cfg.get("languages", {}).get(
+                    lang, {}).get("category_url_patterns", [])
                 patterns = list(set(patterns + lang_patterns))
-            
+
             for pattern in patterns:
                 m = re.search(pattern, url)
                 if m:
@@ -453,7 +566,8 @@ class ExtractionEngine(PipelineEngine):
             cls_id = cls_id.lower()
 
             penalty = 0
-            if any(x in cls_id for x in ["nav", "menu", "header", "footer", "sidebar", "banner", "social", "share", "cookie", "breadcrumb"]):
+            if any(x in cls_id for x in ["nav", "menu", "header", "footer", "sidebar",
+                                          "banner", "social", "share", "cookie", "breadcrumb"]):
                 penalty += 500
 
             link_count = len(tag.find_all("a", href=True))
@@ -486,10 +600,6 @@ class ExtractionEngine(PipelineEngine):
         site_cfg: Dict[str, Any],
         locale_map: Optional[Dict[str, str]] = None,
     ) -> Dict[str, Any]:
-        """
-        Collect page metadata.
-        locale_map is passed to extract_date for month name support.
-        """
         return {
             "title": self.extract_title(soup, site_cfg),
             "date": self.extract_date(soup, site_cfg, locale_map=locale_map),
@@ -505,8 +615,12 @@ class ExtractionEngine(PipelineEngine):
         locale_map = self.get_date_locale_map(url)
         noise_words = site_cfg.get("_noise_words", [])
 
-        soup = self.clean_html(soup, extra_remove=site_cfg.get("remove_selectors", []))
+        # ВАЖНО: НЕ удаляем <script>, пока не извлекли JSON-LD
+        # (author и date берутся из JSON-LD раньше, чем почистим HTML)
         page_meta = self.extract_page_meta(soup, url, site_cfg, locale_map=locale_map)
+
+        # Теперь чистим — удаляем скрипты, стили, баннеры
+        soup = self.clean_html(soup, extra_remove=site_cfg.get("remove_selectors", []))
 
         container = self.find_best_content_container(soup, site_cfg)
         if container:
@@ -524,7 +638,10 @@ class ExtractionEngine(PipelineEngine):
         if len(full_clean) > excerpt_len:
             excerpt += "..."
 
-        h = sha256_hex((content or "") + "|" + (page_meta.get("title") or "") + "|" + (url or ""), trunc=32)
+        h = sha256_hex(
+            (content or "") + "|" + (page_meta.get("title") or "") + "|" + (url or ""),
+            trunc=32,
+        )
 
         return {
             "url": url,
@@ -684,7 +801,7 @@ class ExtractionEngine(PipelineEngine):
     ) -> Dict[str, Any]:
         limits = self.limits_cfg()
         if max_items_override is not None:
-            limits["max_items"] = max_items_override   # forced limit
+            limits["max_items"] = max_items_override
 
         output_jsonl = output_jsonl or self.global_cfg().get("output_jsonl", "items_v6_5.jsonl")
         output_json = output_json or self.global_cfg().get("output_json", "items_v6_5.json")
@@ -732,17 +849,16 @@ def run(
     max_items: Optional[int] = None,
 ) -> Dict[str, Any]:
     engine = ExtractionEngine(yaml_path=yaml_path)
-    
-    # Auto-generate output filenames from site_key + date
+
     if output_jsonl is None or output_json is None:
         site_key = engine.site_key(start_url)
         date_str = time.strftime("%Y-%m-%d")
-        os.makedirs("output", exist_ok=True) 
+        os.makedirs("output", exist_ok=True)
         if output_jsonl is None:
             output_jsonl = f"output/{site_key}_{date_str}_articles.jsonl"
         if output_json is None:
             output_json = f"output/{site_key}_{date_str}_articles.json"
-    
+
     return engine.run_full_pipeline(
         start_url=start_url,
         output_jsonl=output_jsonl,
@@ -758,8 +874,8 @@ if __name__ == "__main__":
 
     yaml_path = "config/universal.yaml"
     start = "https://khovar.tj/"
-    out_jsonl = None   
-    out_json = None    
+    out_jsonl = None
+    out_json = None
     max_items = None
 
     if len(sys.argv) >= 2:

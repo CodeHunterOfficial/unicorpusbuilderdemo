@@ -17,8 +17,10 @@ sites:
       - "menu_scraping"
       - "pattern_fallback"
     author_strategy:
-      - "meta_tag"
       - "json_ld_graph"
+      - "json_ld_simple"
+      - "meta_tag"
+      - "class_selector"
       - "regex_in_content"
       - "default_fallback"
     rubric_selectors:
@@ -47,15 +49,17 @@ sites:
       - "title"
       - 'meta[property="og:title"]'
     date_selectors:
-      - 'script[type="application/ld+json"]'
-      - 'meta[name="published_at"]'
       - 'meta[property="article:published_time"]'
+      - 'meta[name="published_at"]'
       - 'meta[itemprop="datePublished"]'
       - "time[datetime]"
+      - "[class*='date']"
     author_selectors:
       - 'meta[name="author"]'
       - 'meta[property="article:author"]'
-      - ".authors_3UWeo .item_1CuO-"
+      - "[class*='_authors_'] [class*='_item_']"
+      - "[class*='_authors_']"
+      - "[class*='author']"
       - ".material-author"
     category_selectors:
       - 'meta[property="article:section"]'
@@ -82,6 +86,7 @@ sites:
       - "/galleries/"
       - "/category/"
       - "/tag/"
+      
 
   # ============================================================
   # akbuzat-rb.ru — Nuxt-based Bashkir news
@@ -90,13 +95,16 @@ sites:
     match:
       - "akbuzat-rb.ru"
     default_language: "ba"
-    noise_language: ["common", "ba"]
+    noise_language: ["common", "ba", "ru"]
+    start_url: "https://akbuzat-rb.ru/"
     rubric_strategy:
       - "nuxt_state_parsing"
       - "pattern_fallback"
     author_strategy:
-      - "meta_tag"
       - "json_ld_graph"
+      - "json_ld_simple"
+      - "class_selector"
+      - "meta_tag"
       - "regex_in_content"
       - "default_fallback"
     rubric_selectors:
@@ -105,8 +113,13 @@ sites:
       - "a[href*='/articles/']"
       - "a[href*='/news/']"
     card_selectors:
+      - "a[class*='_item_'][href*='/news/']"
+      - "a[class*='_item_'][href*='/articles/']"
+      - "div[class*='_items-block_'] a[href]"
       - "article"
     article_link_selectors:
+      - "a[class*='_item_'][href*='/news/']"
+      - "a[class*='_item_'][href*='/articles/']"
       - "a[href*='/articles/']"
       - "a[href*='/news/']"
     pagination_selectors:
@@ -120,39 +133,76 @@ sites:
       - "a[href*='/page/']"
     title_selectors:
       - "h1"
-      - "title"
       - 'meta[property="og:title"]'
+      - "title"
     date_selectors:
-      - 'script[type="application/ld+json"]'
-      - 'meta[name="published_at"]'
+      - "div.cm-date"
+      - "[class*='_rubricDate_'] .cm-date"
       - 'meta[property="article:published_time"]'
+      - 'meta[name="published_at"]'
+      - 'meta[name="pubdate"]'
       - 'meta[itemprop="datePublished"]'
       - "time[datetime]"
+      - "[class*='_date_']"
+      - "[class*='date']"
     author_selectors:
-      - 'meta[name="Author"]'
+      - "[class*='_authors_'] [class*='_item_']"
+      - "[class*='_authors_'] span"
       - 'meta[name="author"]'
+      - 'meta[name="Author"]'
       - 'meta[property="article:author"]'
-      - ".authors_3UWeo .item_1CuO-"
+      - "[class*='_authors_']"
+      - "[class*='author']"
       - ".material-author"
       - ".article-author"
+      - ".byline"
     category_selectors:
+      - "a.cm-rubric"
+      - "[class*='_rubricDate_'] a.cm-rubric"
       - 'meta[property="article:section"]'
       - ".breadcrumb a"
       - ".rubric"
       - ".category"
+      - "[class*='rubric']"
     content_selectors:
+      - "section.cols > div"
+      - "section.cols"
+      - "[class*='_block_']"
+      - ".serif-text"
       - "article"
-      - ".article-body"
-      - ".content"
-      - ".entry-content"
       - "main"
     remove_selectors:
+      - "script"
+      - "style"
+      - "noscript"
+      - "iframe"
       - ".banner"
       - ".social"
       - ".share"
       - ".widget"
-    article_url_filters:
-      - "/articles/"
-      - "/news/"
+      - "[class*='_topBanner_']"
+      - "[class*='_authors_']"
+      - "[class*='_readus_']"
+      - "[class*='_socials_']"
+      - "[class*='_photoText_']"
+      - "[class*='_blockTitle_']"
+      - "[class*='_gallery_']"
+      - "[class*='_thumbs_']"
+      - "[class*='_teaserItem_']"
+      - "[class*='_partners']"
+      - "[class*='_footer']"
+      - "[class*='_contacts_']"
+      - ".swiper-container"
+      - ".swiper-wrapper"
+      - ".swiper-slide"
+    article_url_filters: []
     article_url_excludes:
       - "/rubric/"
+      - "/category/"
+      - "/tag/"
+      - "/author/"
+      - "/page/"
+      - "/feed/"
+      - ".jpg"
+      - ".png"
+      - ".pdf"

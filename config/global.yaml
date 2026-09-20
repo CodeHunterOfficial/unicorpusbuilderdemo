@@ -677,7 +677,6 @@ default_profile:
     - ".entry-content"
     - ".story-body"
     - ".content"
-    - "main"
     - "#content"
 
   remove_selectors:

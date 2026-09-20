@@ -142,125 +142,148 @@ sites:
   # ============================================================
   asiaplustj:
     match:
+      - "asiaplus.news"
       - "asiaplustj.info"
-      - "asiaplustj"
     default_language: "tg"
-    noise_language: ["common", "tg"]
+    noise_language: ["common", "tg", "ru"]
+    start_url: "https://asiaplus.news/tg/homepage-tj/"
     rubric_strategy:
       - "menu_scraping"
       - "pattern_fallback"
     author_strategy:
-      - "meta_tag"
       - "class_selector"
+      - "meta_tag"
       - "json_ld_graph"
+      - "json_ld_simple"
       - "regex_in_content"
       - "default_fallback"
     rubric_selectors:
-      - "ul.nav.nav-justified a[href*='/tj/rubrics/']"
-      - "ul.nav.nav-justified a[href*='/tj/news/']"
-      - "ul.nav.nav-justified ul.dropdown-menu a[href*='/tj/rubrics/']"
-      - "ul.nav.nav-justified ul.dropdown-menu a[href*='/tj/news/']"
-      - "nav a[href*='/tj/rubrics/']"
-      - "nav a[href*='/tj/news/']"
+      - "div[class*='menu-'][class*='-container'] a[href*='/tg/category/']"
+      - "div[class*='menu-'] a[href*='/tg/category/']"
+      - "nav a[href*='/tg/category/']"
+      - "a[href*='/tg/category/']"
     card_selectors:
-      - "div.rubric"
+      - "div.td_module_wrap"
+      - "div.td_module_flex"
+      - "div.td_module_6"
       - "article"
-      - "div.news-item"
-      - "li"
     article_link_selectors:
-      - "a[href]"
+      - "h3.entry-title a[href]"
+      - "h3.td-module-title a[href]"
+      - "a.td-image-wrap[href]"
     pagination_selectors:
+      - "a.page-numbers"
+      - "a.next.page-numbers"
       - "ul.pagination a[href]"
-      - "a.next"
-      - "a[rel='next']"
-      - "a[href*='page=']"
+      - "link[rel='next']"
       - "a[href*='/page/']"
     title_selectors:
+      - "h1.entry-title"
+      - "h1.tdb-title-text"
       - "h1"
-      - "title"
       - 'meta[property="og:title"]'
+      - "title"
     date_selectors:
-      - "div.article-info span"
       - 'meta[property="article:published_time"]'
-      - 'meta[name="pubdate"]'
-      - 'meta[name="published_date"]'
-      - 'meta[itemprop="datePublished"]'
+      - 'meta[property="og:updated_time"]'
+      - "time.entry-date"
       - "time[datetime]"
     author_selectors:
+      - "span.td-post-author-name a"
+      - ".td-post-author-name"
+      - ".tdb-author-name"
+      - 'meta[name="twitter:data1"]'
       - 'meta[name="author"]'
       - 'meta[property="article:author"]'
-      - ".article-author"
     category_selectors:
       - 'meta[property="article:section"]'
-      - ".breadcrumb a"
+      - "a.td-post-category"
+      - ".tdb-breadcrumbs a"
+      - ".td-category a"
     content_selectors:
+      - "div.td-post-content"
+      - ".tdb-block-inner.td-fix-index"
       - "article"
-      - ".article-body"
-      - ".content"
       - "main"
     remove_selectors:
+      - "script"
+      - "style"
+      - "noscript"
+      - "iframe"
+      - ".td-post-sharing"
+      - ".td-social-sharing"
+      - ".td-related-row"
+      - ".td-block-row"
+      - ".apblk-callout"
+      - ".apblk-quote"
       - ".banner"
-      - ".share"
-      - ".social"
+      - ".advertisement"
       - ".widget"
       - ".sidebar"
     article_url_filters:
-      - "/news/"
-      - "/ru/news/"
-      - "/tj/news/"
+      - "/tg/20"
     article_url_excludes:
       - "/tag/"
       - "/category/"
+      - "/author/"
+      - "/page/"
+      - "/feed/"
+      - "/wp-content/"
+      - ".jpg"
+      - ".png"
+      - ".pdf"
     category_strategy:
-      - "url_path_parsing"
       - "meta_tag"
+      - "url_path_parsing"
 
   # ============================================================
   # khovar.tj — national information agency of Tajikistan
   # ============================================================
   khovar:
-    default_author: "Khovar News Agency"
-    start_url: "https://khovar.tj/"
     match:
       - "khovar.tj"
     default_language: "tg"
-    noise_language: ["common", "tg"]
+    noise_language: ["common", "tg", "ru"]
+    start_url: "https://khovar.tj/"
     rubric_strategy:
       - "menu_scraping"
       - "pattern_fallback"
     author_strategy:
-      - "meta_tag"
       - "class_selector"
-      - "style_based"
+      - "meta_tag"
       - "json_ld_graph"
+      - "json_ld_simple"
       - "regex_in_content"
       - "default_fallback"
     rubric_selectors:
-      - "div.main-menu ul.the-menu a[href]"
-      - "nav a[href]"
-      - "header a[href]"
-      - "a[href*='/news/']"
-      - "a[href*='/tj/']"
+      - "div.main-menu ul.the-menu a[href*='/category/']"
+      - "ul.the-menu a[href*='/category/']"
+      - "a[href*='/category/']"
     card_selectors:
       - "div.article-big"
+      - "ul.article-block-big > li"
       - "article"
-      - "div.post"
     article_link_selectors:
-      - "h2 a"
-      - "a[href]"
+      - "h2 a[href]"
+      - "h4 a[href]"
+      - ".article-content h4 a[href]"
+      - "a.hover-effect[href]"
     pagination_selectors:
       - "div.pagination a.next"
-      - "div.pagination a:contains('Next page')"
-      - "a.next"
-      - "a[rel='next']"
+      - "div.pagination a:contains('Саҳифаи оянда')"
+      - "a.next.page-numbers"
+      - "a.page-numbers"
       - "a[href*='/page/']"
     title_selectors:
+      - "div.article-title h1"
       - "h1"
-      - "title"
       - 'meta[property="og:title"]'
+      - "title"
     date_selectors:
+      - "div.author .a-content .meta"
       - "span.meta"
       - 'meta[property="article:published_time"]'
+      - 'meta[name="pubdate"]'
       - 'meta[itemprop="datePublished"]'
       - "time[datetime]"
     author_selectors:
@@ -268,28 +291,44 @@ sites:
       - 'p[style*="text-align:right"] strong'
       - 'meta[name="author"]'
       - 'meta[property="article:author"]'
-      - ".author"
       - ".article-author"
+      - ".author"
     category_selectors:
       - 'meta[property="article:section"]'
+      - "div.breadcrumb a"
       - ".breadcrumb a"
+      - "a[href*='/category/']"
     content_selectors:
       - "div.shortcode-content"
       - "div.column9"
+      - ".block-content.post"
       - "article"
-      - ".content"
-      - ".entry-content"
       - "main"
     remove_selectors:
+      - "script"
+      - "style"
+      - "noscript"
+      - "iframe"
+      - ".share-block"
+      - ".heateorSssClear"
+      - ".heateor_sss_sharing_container"
+      - ".heateor_sss_sharing_ul"
       - ".banner"
-      - ".share"
-      - ".social"
+      - ".advertisement"
       - ".widget"
-    article_url_filters: []
+    article_url_filters:
+      - "/20"
     article_url_excludes:
       - "/category/"
       - "/tag/"
-
+      - "/author/"
+      - "/page/"
+      - "/feed/"
+      - "/wp-content/"
+      - ".jpg"
+      - ".png"
+      - ".pdf"
+      
   # ============================================================
   # oila.tj — family / lifestyle portal
   # ============================================================
