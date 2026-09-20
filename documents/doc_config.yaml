@@ -1,80 +1,208 @@
 # ============================================================
-# Document parser configuration
+# Universal document parser — configuration
 # ============================================================
-version: "1.0"
-description: "Universal document parser configuration"
+# Schema version is independent of the parser version.
+# Update the parser and the config together when new options appear.
+version: "2.0"
+description: "Universal document parser configuration (v4-compatible)"
 
+# ============================================================
+# Supported file extensions
+# ============================================================
+# Maps each logical category to the extractor type used by the
+# parser and to the extensions routed to that extractor.
 supported_extensions:
   text:
-    extensions: [".txt", ".csv", ".tsv", ".md", ".rst", ".log", ".json", ".xml", ".html", ".htm", ".yaml", ".yml", ".ini", ".cfg", ".py", ".js", ".css", ".sql"]
+    extensions:
+      - ".txt"
+      - ".csv"
+      - ".tsv"
+      - ".md"
+      - ".rst"
+      - ".log"
+      - ".json"
+      - ".xml"
+      - ".yaml"
+      - ".yml"
+      - ".ini"
+      - ".cfg"
+      - ".py"
+      - ".js"
+      - ".css"
+      - ".sql"
     type: "text"
-    
+
   pdf:
     extensions: [".pdf"]
     type: "pdf"
-    
+
   word:
-    extensions: [".docx", ".doc", ".odt", ".rtf"]
+    extensions: [".docx", ".odt", ".rtf"]
     type: "docx"
-    
+    # Note: legacy .doc files are not supported by python-docx.
+    # Convert them to .docx with LibreOffice before parsing.
+
   spreadsheet:
-    extensions: [".xlsx", ".xls", ".ods"]
+    extensions: [".xlsx", ".ods"]
     type: "xlsx"
-    
+    # Note: legacy .xls files require xlrd; not covered by openpyxl.
+
   presentation:
-    extensions: [".pptx", ".ppt", ".odp"]
+    extensions: [".pptx", ".odp"]
     type: "pptx"
-    
+    # Note: legacy .ppt files are not supported by python-pptx.
+
   ebook:
-    extensions: [".epub", ".mobi", ".fb2", ".azw", ".azw3"]
+    extensions: [".epub", ".fb2", ".mobi", ".azw", ".azw3"]
     type: "ebook"
-    
+
   image_ocr:
     extensions: [".png", ".jpg", ".jpeg", ".tiff", ".tif", ".bmp", ".gif", ".webp"]
     type: "image"
-    
+
   archive:
     extensions: [".zip", ".rar", ".7z", ".tar", ".gz", ".bz2"]
     type: "archive"
 
+# HTML/HTM are handled by the special Trafilatura path and are
+# listed under `text` above only to ensure they are discovered.
+
+# ============================================================
+# Filename parsing
+# ============================================================
+# Author and title are extracted from the file name using the
+# first matching separator. When `author_first` is true, the part
+# before the separator is treated as the author.
 filename_parsing:
   separators: ["_", " - ", "-"]
   author_first: true
 
+# ============================================================
+# Rubric extraction from directory structure
+# ============================================================
+# `depth` selects which directory level is treated as the rubric.
+# `ignore_root` skips files that sit directly in the root folder.
 rubric_parsing:
   depth: 0
   ignore_root: true
 
+# ============================================================
+# Plain-text reading
+# ============================================================
+# Encodings are tried in order; the first one that decodes the
+# file without errors is used.
 text_reading:
-  encodings: ["utf-8", "utf-8-sig", "windows-1251", "cp1251", "koi8-r", "latin-1", "iso-8859-1", "cp866", "maccyrillic"]
+  encodings:
+    - "utf-8"
+    - "utf-8-sig"
+    - "windows-1251"
+    - "cp1251"
+    - "koi8-r"
+    - "cp866"
+    - "maccyrillic"
+    - "latin-1"
+    - "iso-8859-1"
 
+# ============================================================
+# PDF extraction
+# ============================================================
+# Primary extractor is PyMuPDF. When the extracted text length is
+# below `ocr_fallback_below_chars` and the document has at least
+# one page, the parser falls back to OCR (pdf2image + PaddleOCR).
+# Docling is an optional layout-aware extractor, kept disabled by
+# default because it requires ~3-5 GB of additional dependencies.
+pdf:
+  use_ocr_fallback: true
+  ocr_fallback_below_chars: 200
+  ocr_dpi: 200
+  use_docling_fallback: false
+
+# ============================================================
+# OCR (PaddleOCR)
+# ============================================================
+# PaddleOCR uses language-specific models. Common codes:
+#   en — English
+#   ru — Russian (also covers most Cyrillic scripts)
+#   ar — Arabic
+#   ch — Chinese and Latin script
+# Use "ru" for Tatar, Bashkir, Ossetian, Tajik (Cyrillic).
+# Use "ar" for Tajik in Perso-Arabic script.
 ocr:
-  languages: "rus+eng+tat+ara"
+  engine: "paddleocr"
+  paddle_lang: "ru"
+  use_gpu: false
+  min_confidence: 0.5
   min_width: 100
   min_height: 100
+  max_retries: 2
 
+# ============================================================
+# Processing pipeline
+# ============================================================
 processing:
   max_file_size_mb: 100
   min_text_length: 100
   skip_empty: true
+
+  # Archive handling
   recursive_archives: true
   max_archive_depth: 3
+  max_archive_files: 1000
+  max_archive_total_mb: 500
 
+  # Parallelism: 1 = sequential; raise to 4-8 on multi-core hosts.
+  # PaddleOCR is guarded by a lock; other extractors are thread-safe.
+  max_workers: 1
+
+  # Per-document quality metrics (chars_per_page, unique_words_ratio,
+  # has_garbage, extraction_confidence).
+  collect_quality: true
+
+# ============================================================
+# Output
+# ============================================================
 output:
   directory: "output/documents"
   filename_template: "documents_{timestamp}.jsonl"
   save_all: true
 
+# ============================================================
+# Text cleaning
+# ============================================================
 text_cleaning:
+  strip_html: true
   normalize_whitespace: true
   min_line_length: 20
   remove_numeric_only: false
-  strip_html: true
 
+  # Boilerplate patterns are applied as multiline regular
+  # expressions. Lines matching any pattern are removed before
+  # whitespace normalization. Use sparingly to avoid deleting
+  # legitimate content.
+  boilerplate_patterns:
+    - "^© .*$"
+    - "^Все права защищены.*$"
+    - "^All rights reserved.*$"
+    - "^Страница \\d+ из \\d+$"
+    - "^Page \\d+ of \\d+$"
+    - "^\\s*\\d+\\s*$"
+
+# ============================================================
+# Language detection
+# ============================================================
+# Primary detector is fast-langdetect (FastText lid.176); the
+# script-based heuristic is used as a fallback when the detector
+# is unavailable. `default` is returned when detection fails.
 language:
   auto_detect: true
+  detector: "fast-langdetect"
   default: "unknown"
 
+# ============================================================
+# Default metadata
+# ============================================================
+# Applied when a field cannot be derived from the file name,
+# directory structure, or document properties.
 defaults:
   author: null
   category: null
