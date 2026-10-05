@@ -1,25 +1,21 @@
 # tools/strategy_hitrate.py
 """
-Measure two things in a single pass over a set of article URLs.
+Measure strategy-level precision and cost, plus body-extraction quality.
 
-1. First-matching strategy distribution for the fields:
-   author, title, date, category, content.
+Per field (author, title, date, category, content) the script reports:
+  * first-matching strategy distribution;
+  * per-strategy precision p — fraction of correct extractions among
+    firings, evaluated against meta-tag references;
+  * per-strategy cost c — mean wall-clock time per document attempt;
+  * score = p / c, used to justify the chain order in the article.
 
-2. Body-extraction quality for UniCorpusBuilder:
-   ROUGE-1, ROUGE-L, word-level P/R/F1, length ratio.
-   Gold text is taken independently of the pipeline from
-   ``<article>`` / ``<main>`` / ``[role=main]`` / ``<body>``.
-
-Per-site and per-language coverage is also reported.
+Body-extraction quality for UniCorpusBuilder is measured against an
+independently built gold text.
 
 URL sources
 -----------
-Two modes are supported:
-
-  * Config mode — the script reads ``config/universal.yaml`` and picks
-    sites by language, then discovers article URLs from each site.
-  * File mode — URLs are read from local JSONL files produced by an
-    earlier pipeline run.
+Config mode — sites selected by language from ``config/universal.yaml``;
+File mode   — URLs read from local JSONL files.
 
 Usage
 -----
@@ -30,7 +26,7 @@ Usage
 
 Installation
 ------------
-    pip install trafilatura rouge-score
+    pip install trafilatura rouge-score python-dateutil
 """
 from __future__ import annotations
 
@@ -42,11 +38,14 @@ import re
 import sys
 import time
 from collections import Counter, defaultdict
+from dataclasses import dataclass
 from pathlib import Path
+from typing import Optional
 
 sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
 from bs4 import BeautifulSoup
+from dateutil import parser as dateparser
 from tqdm import tqdm
 
 from config.loader import load_modular_config
@@ -55,7 +54,6 @@ from pipeline.pipeline_extraction import ExtractionEngine
 from _common import WORD_RE, discover_urls_for_site, stats_summary
 
 
-# --- Optional dependency: ROUGE ---
 try:
     from rouge_score import rouge_scorer
     _SCORER = rouge_scorer.RougeScorer(["rouge1", "rougeL"], use_stemmer=False)
@@ -69,24 +67,22 @@ except ImportError:
 # Text metrics
 # ------------------------------------------------------------------
 
-def _clean_text(s):
-    """Collapse whitespace and strip."""
+def _clean_text(s: str) -> str:
     return re.sub(r"\s+", " ", s or "").strip()
 
 
-def _tokenize(s):
-    """Tokenize a string into lowercase word units."""
+def _tokenize(s: str) -> list[str]:
     return WORD_RE.findall((s or "").lower())
 
 
-def extract_gold_text(soup):
+def extract_gold_text(soup: BeautifulSoup) -> str:
     """
     Return the gold article body used to score UniCorpusBuilder.
 
     Resolution order:
       1. A fixed list of narrow selectors targeting common CMS layouts.
-      2. ``<article>`` / ``<main>`` / ``[role=main]``.
-      3. ``<body>`` with boilerplate tags removed.
+      2. <article> / <main> / [role=main].
+      3. <body> with boilerplate tags removed.
     """
     narrow_selectors = [
         "div.page-main__text",
@@ -138,8 +134,7 @@ def extract_gold_text(soup):
     return ""
 
 
-def word_prf1(pred, gold):
-    """Word-level Precision / Recall / F1 over unique words."""
+def word_prf1(pred: str, gold: str) -> tuple[float, float, float]:
     pred_set = set(_tokenize(pred))
     gold_set = set(_tokenize(gold))
     if not pred_set or not gold_set:
@@ -151,14 +146,7 @@ def word_prf1(pred, gold):
     return p, r, f1
 
 
-def compute_quality(gold, pred):
-    """
-    Compute all body-quality metrics for one (gold, pred) pair.
-
-    Returns a dict with all metrics. Individual fields are None when
-    the gold text is shorter than 300 characters or the prediction is
-    empty.
-    """
+def compute_quality(gold: str, pred: str) -> dict:
     out = {
         "gold_len": len(gold or ""),
         "pred_len": len(pred or ""),
@@ -191,18 +179,163 @@ def compute_quality(gold, pred):
 
 
 # ------------------------------------------------------------------
+# Reference metadata (meta tags) and correctness checks
+# ------------------------------------------------------------------
+
+def ref_meta_author(soup: BeautifulSoup) -> Optional[str]:
+    for name in ["author", "article:author", "DC.creator",
+                 "sailthru.author", "twitter:creator"]:
+        tag = soup.find("meta", attrs={"name": name})
+        if tag and tag.get("content"):
+            return tag["content"]
+    for prop in ["article:author", "og:article:author"]:
+        tag = soup.find("meta", attrs={"property": prop})
+        if tag and tag.get("content"):
+            return tag["content"]
+    return None
+
+
+def ref_meta_date(soup: BeautifulSoup) -> Optional[str]:
+    for prop in ["article:published_time", "og:published_time",
+                 "article:modified_time"]:
+        tag = soup.find("meta", attrs={"property": prop})
+        if tag and tag.get("content"):
+            return tag["content"]
+    for name in ["datePublished", "pubdate", "publishdate", "date",
+                 "DC.date", "sailthru.date"]:
+        tag = soup.find("meta", attrs={"name": name})
+        if tag and tag.get("content"):
+            return tag["content"]
+    return None
+
+
+def ref_meta_title(soup: BeautifulSoup) -> Optional[str]:
+    for prop in ["og:title", "twitter:title"]:
+        tag = soup.find("meta", attrs={"property": prop})
+        if tag and tag.get("content"):
+            return tag["content"]
+    tag = soup.find("meta", attrs={"name": "title"})
+    if tag and tag.get("content"):
+        return tag["content"]
+    return None
+
+
+def _author_correct(extracted: str, ref: str) -> bool:
+    if not ref or not extracted:
+        return False
+    return ref.lower()[:15] in extracted.lower()
+
+
+def _date_correct(extracted: str, ref: str) -> bool:
+    if not ref or not extracted:
+        return False
+    try:
+        d1 = dateparser.parse(str(extracted), fuzzy=True)
+        d2 = dateparser.parse(str(ref), fuzzy=True)
+        if not d1 or not d2:
+            return False
+        return d1.date() == d2.date()
+    except Exception:
+        return False
+
+
+def _title_correct(extracted: str, ref: str) -> bool:
+    if not ref or not extracted:
+        return False
+    return ref[:30].lower() in extracted.lower()
+
+
+# ------------------------------------------------------------------
+# Strategy tracker
+# ------------------------------------------------------------------
+
+@dataclass
+class ProbeResult:
+    strategy: Optional[str] = None
+    value: Optional[str] = None
+    time_ms: float = 0.0
+    is_correct: Optional[bool] = None
+
+
+class StrategyTracker:
+    """
+    Collect per-strategy precision and cost.
+
+    For each (field, strategy) pair, accumulate:
+      attempts        — documents where the strategy was invoked;
+      fired           — invocations that returned a value;
+      ref_available   — firings where a meta-tag reference existed;
+      correct         — firings whose value matched the reference;
+      time_all_total  — wall-clock milliseconds across all attempts;
+      time_fire_total — wall-clock milliseconds on firings only.
+
+    Derived:
+      p        = correct / ref_available       (precision among firings);
+      c        = time_all_total / attempts     (mean ms per document);
+      score    = p / c.
+    """
+
+    FIELDS = ("author", "title", "date", "category", "content")
+
+    def __init__(self) -> None:
+        self.data: dict[tuple[str, str], dict] = defaultdict(
+            lambda: {
+                "attempts": 0,
+                "fired": 0,
+                "correct": 0,
+                "ref_available": 0,
+                "time_all_total": 0.0,
+                "time_fire_total": 0.0,
+            }
+        )
+
+    def record(
+        self,
+        field: str,
+        strategy: str,
+        time_ms: float,
+        is_correct: Optional[bool],
+        fired: bool,
+    ) -> None:
+        d = self.data[(field, strategy)]
+        d["attempts"] += 1
+        d["time_all_total"] += time_ms
+        if fired:
+            d["fired"] += 1
+            d["time_fire_total"] += time_ms
+            if is_correct is not None:
+                d["ref_available"] += 1
+                if is_correct:
+                    d["correct"] += 1
+
+    def rows(self) -> list[dict]:
+        rows = []
+        for (field, strategy), d in sorted(self.data.items()):
+            p = (d["correct"] / d["ref_available"]) if d["ref_available"] else None
+            c_all = (d["time_all_total"] / d["attempts"]) if d["attempts"] else None
+            c_fire = (d["time_fire_total"] / d["fired"]) if d["fired"] else None
+            score = (p / c_all) if (p is not None and c_all and c_all > 0) else None
+            rows.append({
+                "field": field,
+                "strategy": strategy,
+                "attempts": d["attempts"],
+                "fired": d["fired"],
+                "ref_available": d["ref_available"],
+                "correct": d["correct"],
+                "p": round(p, 4) if p is not None else None,
+                "c_all_ms": round(c_all, 4) if c_all is not None else None,
+                "c_fire_ms": round(c_fire, 4) if c_fire is not None else None,
+                "p_over_c": round(score, 4) if score is not None else None,
+            })
+        return rows
+
+
+# ------------------------------------------------------------------
 # URL collection
 # ------------------------------------------------------------------
 
 def gather_from_config(engine, langs, sites_per_lang, articles_per_site,
                        min_strategies, exclude=None):
-    """
-    Select sites by language and collect article URLs from each.
-
-    Sites with fewer than ``min_strategies`` author strategies are
-    skipped, so that the first-matching-strategy analysis has enough
-    configurations to be informative.
-    """
     exclude = set(exclude or [])
     config = load_modular_config(engine.yaml_path)
     sites = config.get("sites", {})
@@ -245,7 +378,6 @@ def gather_from_config(engine, langs, sites_per_lang, articles_per_site,
 
 
 def iter_articles_from_files(files, per_site):
-    """Yield URLs from local JSONL files (file mode)."""
     seen = set()
     counter = defaultdict(int)
     for f in files:
@@ -270,8 +402,31 @@ def iter_articles_from_files(files, per_site):
 # Per-field strategy probes
 # ------------------------------------------------------------------
 
-def try_author(engine, soup, site_cfg, url):
-    """Return the name of the first author strategy that produces a value, or None."""
+_AUTHOR_LABEL_RE = re.compile(
+    r"^(Author|By|From the author|Author)\s*[:\-]?\s*", re.I
+)
+
+
+def _clean_probe_value(raw: Optional[str], max_len: int = 300) -> Optional[str]:
+    """Reject JSON blobs and over-long strings; strip leading labels."""
+    if not raw:
+        return None
+    s = raw.strip()
+    if not s or len(s) > max_len:
+        return None
+    if s.startswith(("{", "[")):
+        return None
+    return s
+
+
+def probe_author(
+    engine,
+    soup: BeautifulSoup,
+    site_cfg: dict,
+    url: str,
+    tracker: Optional[StrategyTracker] = None,
+    ref: Optional[str] = None,
+) -> ProbeResult:
     strategies = (
         site_cfg.get("author_strategy")
         or engine.global_cfg().get("author_strategies_order")
@@ -285,130 +440,248 @@ def try_author(engine, soup, site_cfg, url):
         tmp["author_strategy"] = [strat]
         tmp["default_author"] = None
         tmp["author_priority"] = None
+
+        t0 = time.perf_counter()
         try:
-            result = engine.extract_author_from_soup(soup, tmp, url)
+            raw = engine.extract_author_from_soup(soup, tmp, url)
         except Exception:
-            result = None
-        if result and result.strip():
-            s = result.strip()
-            if s.startswith(("{", "[")):
-                continue
-            if len(s) > 300:
-                continue
-            return strat
+            raw = None
+        dt_ms = (time.perf_counter() - t0) * 1000
+
+        value = _clean_probe_value(raw, max_len=300)
+        if value:
+            value = _AUTHOR_LABEL_RE.sub("", value).strip() or None
+
+        if tracker is not None:
+            if value:
+                correct = _author_correct(value, ref) if ref else None
+                tracker.record("author", strat, dt_ms, correct, fired=True)
+            else:
+                tracker.record("author", strat, dt_ms, None, fired=False)
+
+        if value:
+            return ProbeResult(strat, value, dt_ms, None)
 
     if "default_fallback" in strategies and site_cfg.get("default_author"):
-        return "default_fallback"
-    return None
+        value = _clean_probe_value(site_cfg["default_author"], max_len=300)
+        if value and tracker is not None:
+            correct = _author_correct(value, ref) if ref else None
+            tracker.record("author", "default_fallback", 0.0, correct, fired=True)
+        return ProbeResult("default_fallback", value, 0.0, None)
+
+    return ProbeResult()
 
 
-def try_title(engine, soup, site_cfg):
-    """Return the selector that first produces a title, or None."""
+def probe_title(
+    engine,
+    soup: BeautifulSoup,
+    site_cfg: dict,
+    tracker: Optional[StrategyTracker] = None,
+    ref: Optional[str] = None,
+) -> ProbeResult:
     for sel in site_cfg.get("title_selectors", []):
+        t0 = time.perf_counter()
         try:
             el = engine._safe_select_one(soup, sel)
         except Exception:
             el = None
+        dt_ms = (time.perf_counter() - t0) * 1000
+
+        value = None
         if el:
             if el.name == "meta" and el.get("content"):
-                val = (el.get("content") or "").strip()
+                value = _clean_probe_value(el.get("content"))
             else:
-                val = el.get_text(" ", strip=True)
-            if val:
-                return sel
+                value = _clean_probe_value(el.get_text(" ", strip=True))
+
+        if tracker is not None:
+            if value:
+                correct = _title_correct(value, ref) if ref else None
+                tracker.record("title", sel, dt_ms, correct, fired=True)
+            else:
+                tracker.record("title", sel, dt_ms, None, fired=False)
+
+        if value:
+            return ProbeResult(sel, value, dt_ms, None)
+
     if soup.title and soup.title.string and soup.title.string.strip():
-        return "<title>"
-    return None
+        value = _clean_probe_value(soup.title.string)
+        if tracker is not None and value:
+            correct = _title_correct(value, ref) if ref else None
+            tracker.record("title", "<title>", 0.0, correct, fired=True)
+        if value:
+            return ProbeResult("<title>", value, 0.0, None)
+
+    return ProbeResult()
 
 
-def try_date(engine, soup, site_cfg, url):
-    """Return the source label that first produces a parsable date, or None."""
+def probe_date(
+    engine,
+    soup: BeautifulSoup,
+    site_cfg: dict,
+    url: str,
+    tracker: Optional[StrategyTracker] = None,
+    ref: Optional[str] = None,
+) -> ProbeResult:
     from pipeline.pipeline_core import parse_datetime_value
     locale_map = engine.get_date_locale_map(url)
 
-    jld = None
+    t0 = time.perf_counter()
     try:
         jld = engine.extract_jsonld_date(soup)
     except Exception:
         jld = None
+    dt_ms = (time.perf_counter() - t0) * 1000
+
     if jld:
         parsed = parse_datetime_value(jld, locale_map)
         if parsed:
-            return "json_ld:datePublished"
+            if tracker is not None:
+                correct = _date_correct(parsed, ref) if ref else None
+                tracker.record("date", "json_ld:datePublished", dt_ms, correct, fired=True)
+            return ProbeResult("json_ld:datePublished", parsed, dt_ms, None)
+    if tracker is not None:
+        tracker.record("date", "json_ld:datePublished", dt_ms, None, fired=False)
 
     for sel in site_cfg.get("date_selectors", []):
         if "ld+json" in sel:
             continue
+        t0 = time.perf_counter()
         try:
             el = engine._safe_select_one(soup, sel)
         except Exception:
             el = None
-        if el:
-            if el.name == "script":
-                continue
+        dt_ms = (time.perf_counter() - t0) * 1000
+
+        parsed = None
+        if el and el.name != "script":
             val = el.get("content") or el.get("datetime") or el.get_text(" ", strip=True)
             if val:
                 parsed = parse_datetime_value(val, locale_map)
-                if parsed:
-                    return sel
-    return None
+
+        if tracker is not None:
+            if parsed:
+                correct = _date_correct(parsed, ref) if ref else None
+                tracker.record("date", sel, dt_ms, correct, fired=True)
+            else:
+                tracker.record("date", sel, dt_ms, None, fired=False)
+
+        if parsed:
+            return ProbeResult(sel, parsed, dt_ms, None)
+
+    return ProbeResult()
 
 
-def try_category(engine, soup, url, site_cfg):
-    """Return the category-strategy label that first produces a value, or None."""
+def probe_category(
+    engine,
+    soup: BeautifulSoup,
+    url: str,
+    site_cfg: dict,
+    tracker: Optional[StrategyTracker] = None,
+) -> ProbeResult:
     strategies = site_cfg.get("category_strategy") or []
+
     for strat in strategies:
         if strat == "meta_tag":
             for sel in site_cfg.get("category_selectors", []):
+                t0 = time.perf_counter()
                 try:
                     el = engine._safe_select_one(soup, sel)
                 except Exception:
                     el = None
+                dt_ms = (time.perf_counter() - t0) * 1000
+                value = None
                 if el:
-                    val = el.get("content") if el.name == "meta" else el.get_text(" ", strip=True)
-                    if val and val.strip():
-                        return f"{strat}:{sel[:40]}"
+                    raw = el.get("content") if el.name == "meta" else el.get_text(" ", strip=True)
+                    value = _clean_probe_value(raw, max_len=200)
+                label = f"{strat}:{sel[:40]}"
+                if tracker is not None:
+                    tracker.record("category", label, dt_ms, None, fired=bool(value))
+                if value:
+                    return ProbeResult(label, value, dt_ms, None)
+
         elif strat == "url_path_parsing":
+            t0 = time.perf_counter()
             try:
                 cat = engine.extract_category(soup, url, site_cfg)
-                if cat:
-                    return strat
             except Exception:
-                pass
+                cat = None
+            dt_ms = (time.perf_counter() - t0) * 1000
+            value = _clean_probe_value(cat, max_len=200)
+            if tracker is not None:
+                tracker.record("category", strat, dt_ms, None, fired=bool(value))
+            if value:
+                return ProbeResult(strat, value, dt_ms, None)
+
         elif strat == "breadcrumb":
+            t0 = time.perf_counter()
+            value = None
             for el in soup.select(".breadcrumb, .breadcrumbs, [class*=breadcrumb]"):
                 txt = el.get_text(" ", strip=True)
-                if txt:
-                    return strat
+                value = _clean_probe_value(txt, max_len=200)
+                if value:
+                    break
+            dt_ms = (time.perf_counter() - t0) * 1000
+            if tracker is not None:
+                tracker.record("category", strat, dt_ms, None, fired=bool(value))
+            if value:
+                return ProbeResult(strat, value, dt_ms, None)
+
         elif strat == "context_passed":
             continue
+
+    t0 = time.perf_counter()
     try:
         cat = engine.extract_category(soup, url, site_cfg)
-        if cat:
-            return "fallback"
     except Exception:
-        pass
-    return None
+        cat = None
+    dt_ms = (time.perf_counter() - t0) * 1000
+    value = _clean_probe_value(cat, max_len=200)
+    if tracker is not None:
+        tracker.record("category", "fallback", dt_ms, None, fired=bool(value))
+    if value:
+        return ProbeResult("fallback", value, dt_ms, None)
+
+    return ProbeResult()
 
 
-def try_content(engine, soup, site_cfg):
-    """Return the content selector that first produces a non-trivial body, or None."""
+def probe_content(
+    engine,
+    soup: BeautifulSoup,
+    site_cfg: dict,
+    tracker: Optional[StrategyTracker] = None,
+) -> ProbeResult:
     for sel in site_cfg.get("content_selectors", []):
+        t0 = time.perf_counter()
         try:
             node = engine._safe_select_one(soup, sel)
         except Exception:
             node = None
+        dt_ms = (time.perf_counter() - t0) * 1000
+        value = None
         if node:
             txt = node.get_text(" ", strip=True)
             if txt and len(txt) > 200:
-                return sel
+                value = sel
+        if tracker is not None:
+            tracker.record("content", sel, dt_ms, None, fired=bool(value))
+        if value:
+            return ProbeResult(sel, value, dt_ms, None)
+
+    t0 = time.perf_counter()
+    container = None
     try:
         container = engine.find_best_content_container(soup, site_cfg)
-        if container is not None and container != soup:
-            return "auto:heuristic"
     except Exception:
-        pass
-    return None
+        container = None
+    dt_ms = (time.perf_counter() - t0) * 1000
+    value = "auto:heuristic" if (container is not None and container != soup) else None
+    if tracker is not None:
+        tracker.record("content", "auto:heuristic", dt_ms, None, fired=bool(value))
+    if value:
+        return ProbeResult("auto:heuristic", value, dt_ms, None)
+
+    return ProbeResult()
 
 
 # ------------------------------------------------------------------
@@ -416,18 +689,11 @@ def try_content(engine, soup, site_cfg):
 # ------------------------------------------------------------------
 
 def run_analysis(engine, urls_to_process, sleep):
-    """Run strategy probes and body-quality metrics over every URL."""
-    stats = {
-        "author": Counter(),
-        "title": Counter(),
-        "date": Counter(),
-        "category": Counter(),
-        "content": Counter(),
-    }
+    stats = {name: Counter() for name in ("author", "title", "date", "category", "content")}
     coverage_total = Counter()
     coverage_ok = defaultdict(lambda: Counter())
+    tracker = StrategyTracker()
 
-    # Quality metrics per site and per language
     quality_by_site = defaultdict(lambda: {
         "rouge_l": [], "rouge_1": [], "word_f1": [],
         "word_p": [], "word_r": [], "len_ratio": [],
@@ -460,35 +726,37 @@ def run_analysis(engine, urls_to_process, sleep):
             failed_fetch += 1
             continue
 
+        ref_a = ref_meta_author(soup)
+        ref_d = ref_meta_date(soup)
+        ref_t = ref_meta_title(soup)
+
         coverage_total[site] += 1
 
-        # Strategy probes per field
-        a = try_author(engine, soup, site_cfg, url)
-        stats["author"][a or "[missed]"] += 1
-        if a:
+        a = probe_author(engine, soup, site_cfg, url, tracker, ref_a)
+        stats["author"][a.strategy or "[missed]"] += 1
+        if a.strategy:
             coverage_ok[site]["author"] += 1
 
-        t = try_title(engine, soup, site_cfg)
-        stats["title"][t or "[missed]"] += 1
-        if t:
+        t = probe_title(engine, soup, site_cfg, tracker, ref_t)
+        stats["title"][t.strategy or "[missed]"] += 1
+        if t.strategy:
             coverage_ok[site]["title"] += 1
 
-        d = try_date(engine, soup, site_cfg, url)
-        stats["date"][d or "[missed]"] += 1
-        if d:
+        d = probe_date(engine, soup, site_cfg, url, tracker, ref_d)
+        stats["date"][d.strategy or "[missed]"] += 1
+        if d.strategy:
             coverage_ok[site]["date"] += 1
 
-        c = try_category(engine, soup, url, site_cfg)
-        stats["category"][c or "[missed]"] += 1
-        if c:
+        c = probe_category(engine, soup, url, site_cfg, tracker)
+        stats["category"][c.strategy or "[missed]"] += 1
+        if c.strategy:
             coverage_ok[site]["category"] += 1
 
-        ct = try_content(engine, soup, site_cfg)
-        stats["content"][ct or "[missed]"] += 1
-        if ct:
+        ct = probe_content(engine, soup, site_cfg, tracker)
+        stats["content"][ct.strategy or "[missed]"] += 1
+        if ct.strategy:
             coverage_ok[site]["content"] += 1
 
-        # Body-quality metrics
         try:
             data = engine.extract_article_fields(html, url)
             ucb_content = data.get("content") or ""
@@ -519,7 +787,7 @@ def run_analysis(engine, urls_to_process, sleep):
         time.sleep(sleep)
 
     return (stats, coverage_total, coverage_ok, quality_by_site,
-            quality_by_lang, total, failed_fetch)
+            quality_by_lang, total, failed_fetch, tracker)
 
 
 # ------------------------------------------------------------------
@@ -527,7 +795,6 @@ def run_analysis(engine, urls_to_process, sleep):
 # ------------------------------------------------------------------
 
 def print_stats(name, counter, total, top=8):
-    """Print the strategy distribution for one field and return its CSV rows."""
     print(f"\n--- {name.upper()} ---")
     if not counter:
         print("  (no data)")
@@ -536,7 +803,6 @@ def print_stats(name, counter, total, top=8):
     print("  " + "-" * 65)
 
     rows = []
-    # Real strategy names first; "[missed]" is printed last.
     for val, n in counter.most_common():
         if val == "[missed]":
             continue
@@ -554,22 +820,41 @@ def print_stats(name, counter, total, top=8):
     return rows
 
 
+def print_strategy_scores(rows: list[dict]) -> None:
+    print(f"\n{'='*70}")
+    print("[STRATEGY PRECISION AND COST]")
+    print(f"{'='*70}")
+    print("  p = correct / ref_available   (precision among firings)")
+    print("  c = time_all_total / attempts (mean ms per document attempt)")
+    print("  score = p / c\n")
+    print(f"  {'Field':<10} {'Strategy':<28} {'Fired':>6} {'Ref':>5} "
+          f"{'Corr':>5} {'p':>7} {'c, ms':>8} {'p/c':>7}")
+    print("  " + "-" * 82)
+
+    for r in rows:
+        p_str = f"{r['p']:.3f}" if r["p"] is not None else "—"
+        c_str = f"{r['c_all_ms']:.3f}" if r["c_all_ms"] is not None else "—"
+        s_str = f"{r['p_over_c']:.3f}" if r["p_over_c"] is not None else "—"
+        print(f"  {r['field']:<10} {r['strategy'][:28]:<28} "
+              f"{r['fired']:>6} {r['ref_available']:>5} {r['correct']:>5} "
+              f"{p_str:>7} {c_str:>8} {s_str:>7}")
+
+
 def main():
     ap = argparse.ArgumentParser()
     ap.add_argument("--config", default="config/universal.yaml")
     ap.add_argument("--out", default="strategy_hitrate.csv")
     ap.add_argument("--out-coverage", default="strategy_coverage.csv")
     ap.add_argument("--out-quality", default="strategy_quality.csv")
+    ap.add_argument("--out-scores", default="strategy_scores.csv")
     ap.add_argument("--sleep", type=float, default=0.3)
 
-    # Config mode
     ap.add_argument("--langs", nargs="+", default=["tg", "tt", "ba", "os"])
     ap.add_argument("--sites-per-lang", type=int, default=2)
     ap.add_argument("--articles-per-site", type=int, default=20)
     ap.add_argument("--min-strategies", type=int, default=1)
     ap.add_argument("--exclude", nargs="*", default=["sssr", "ozodi"])
 
-    # File mode
     ap.add_argument("--input-files", nargs="*", default=None)
     ap.add_argument("--input-dir", default=None)
     ap.add_argument("--per-site", type=int, default=30)
@@ -579,7 +864,6 @@ def main():
 
     engine = ExtractionEngine(yaml_path=args.config)
 
-    # --- Determine URL source ---
     if args.input_files or args.input_dir:
         if args.input_files:
             files = [Path(p) for p in args.input_files]
@@ -617,7 +901,7 @@ def main():
     print(f"\n[TOTAL] URLs to process: {len(urls_to_process)}")
 
     (stats, coverage_total, coverage_ok, quality_by_site,
-     quality_by_lang, total, failed_fetch) = run_analysis(
+     quality_by_lang, total, failed_fetch, tracker) = run_analysis(
         engine, urls_to_process, args.sleep
     )
 
@@ -626,25 +910,18 @@ def main():
     print(f"Fetch failures: {failed_fetch}")
     print(f"{'='*70}")
 
-    # --- Per-field strategy distributions ---
     all_rows = []
-    for name in ["author", "title", "date", "category", "content"]:
+    for name in ("author", "title", "date", "category", "content"):
         rows = print_stats(name, stats[name], total, top=8)
         if rows:
             all_rows.extend(rows)
 
-    # --- Body-extraction quality ---
     print(f"\n{'='*70}")
     print("[BODY-EXTRACTION QUALITY] — gold: <article> / <main> / <body>")
     print(f"{'='*70}")
 
-    all_rl = []
-    all_r1 = []
-    all_wf = []
-    all_wp = []
-    all_wr = []
-    all_lr = []
-    for s, d in quality_by_site.items():
+    all_rl, all_r1, all_wf, all_wp, all_wr, all_lr = [], [], [], [], [], []
+    for _s, d in quality_by_site.items():
         all_rl.extend(d["rouge_l"])
         all_r1.extend(d["rouge_1"])
         all_wf.extend(d["word_f1"])
@@ -682,7 +959,6 @@ def main():
         print(f"    mean = {lr['mean']:.2f}   median = {lr['median']:.2f}   "
               f"min/max = {lr['min']:.2f}/{lr['max']:.2f}")
 
-    # --- Coverage by site ---
     print(f"\n{'='*70}")
     print("[COVERAGE BY SITE]")
     print(f"{'='*70}")
@@ -696,33 +972,32 @@ def main():
         if tot == 0:
             continue
         ok = coverage_ok[site]
-        a = ok["author"] / tot * 100
-        t = ok["title"] / tot * 100
-        d = ok["date"] / tot * 100
-        c = ok["category"] / tot * 100
-        ct = ok["content"] / tot * 100
+        a_pct = ok["author"] / tot * 100
+        t_pct = ok["title"] / tot * 100
+        d_pct = ok["date"] / tot * 100
+        c_pct = ok["category"] / tot * 100
+        ct_pct = ok["content"] / tot * 100
 
         rl_s = stats_summary(quality_by_site[site]["rouge_l"])
         wf_s = stats_summary(quality_by_site[site]["word_f1"])
         rl_disp = f"{rl_s['mean']:.3f}" if rl_s else "—"
         wf_disp = f"{wf_s['mean']:.3f}" if wf_s else "—"
 
-        print(f"  {site:<20} {tot:>4} {a:>7.1f}% {t:>7.1f}% {d:>7.1f}% "
-              f"{c:>7.1f}% {ct:>7.1f}% {rl_disp:>9} {wf_disp:>8}")
+        print(f"  {site:<20} {tot:>4} {a_pct:>7.1f}% {t_pct:>7.1f}% {d_pct:>7.1f}% "
+              f"{c_pct:>7.1f}% {ct_pct:>7.1f}% {rl_disp:>9} {wf_disp:>8}")
 
         cov_rows.append({
             "site": site, "articles": tot,
-            "author_pct": round(a, 1),
-            "title_pct": round(t, 1),
-            "date_pct": round(d, 1),
-            "category_pct": round(c, 1),
-            "content_pct": round(ct, 1),
+            "author_pct": round(a_pct, 1),
+            "title_pct": round(t_pct, 1),
+            "date_pct": round(d_pct, 1),
+            "category_pct": round(c_pct, 1),
+            "content_pct": round(ct_pct, 1),
             "rouge_l_mean": round(rl_s["mean"], 4) if rl_s else None,
             "rouge_l_n": rl_s["n"] if rl_s else 0,
             "word_f1_mean": round(wf_s["mean"], 4) if wf_s else None,
         })
 
-    # --- By language ---
     print(f"\n{'='*70}")
     print("[BY LANGUAGE]")
     print(f"{'='*70}")
@@ -736,12 +1011,10 @@ def main():
         lang_site[art.get("lang", "?")].add(art["site"])
 
     for lang in sorted(lang_site.keys()):
-        # Aggregate N and per-field coverage across all sites of this language.
         tot = 0
         a_ok = t_ok = d_ok = c_ok = ct_ok = 0
         for site in lang_site[lang]:
-            st = coverage_total.get(site, 0)
-            tot += st
+            tot += coverage_total.get(site, 0)
             a_ok += coverage_ok[site]["author"]
             t_ok += coverage_ok[site]["title"]
             d_ok += coverage_ok[site]["date"]
@@ -770,7 +1043,9 @@ def main():
             "word_f1_mean": round(wf_s["mean"], 4) if wf_s else None,
         })
 
-    # --- Final table ---
+    score_rows = tracker.rows()
+    print_strategy_scores(score_rows)
+
     print(f"\n{'='*70}")
     print("[FINAL TABLE FOR THE ARTICLE]")
     print(f"{'='*70}")
@@ -796,14 +1071,12 @@ def main():
     if lr:
         print(f"  {'Length ratio (mean)':<40} {lr['mean']:>18.2f}")
 
-    # --- CSV: strategies ---
     with open(args.out, "w", encoding="utf-8", newline="") as f:
         w = csv.DictWriter(f, fieldnames=["metric", "value", "hits", "share_pct"])
         w.writeheader()
         w.writerows(all_rows)
     print(f"\n[OK] Strategy distribution: {args.out}")
 
-    # --- CSV: coverage ---
     with open(args.out_coverage, "w", encoding="utf-8", newline="") as f:
         w = csv.DictWriter(f, fieldnames=[
             "site", "articles", "author_pct", "title_pct", "date_pct",
@@ -814,7 +1087,6 @@ def main():
         w.writerows(cov_rows)
     print(f"[OK] Coverage by site:     {args.out_coverage}")
 
-    # --- CSV: quality by language ---
     with open(args.out_quality, "w", encoding="utf-8", newline="") as f:
         w = csv.DictWriter(f, fieldnames=[
             "lang", "articles", "author_pct", "date_pct", "content_pct",
@@ -824,6 +1096,16 @@ def main():
         w.writerows(lang_rows)
     print(f"[OK] Quality by language:  {args.out_quality}")
 
+    with open(args.out_scores, "w", encoding="utf-8", newline="") as f:
+        w = csv.DictWriter(f, fieldnames=[
+            "field", "strategy", "attempts", "fired", "ref_available",
+            "correct", "p", "c_all_ms", "c_fire_ms", "p_over_c",
+        ])
+        w.writeheader()
+        w.writerows(score_rows)
+    print(f"[OK] Strategy scores:      {args.out_scores}")
+
 
 if __name__ == "__main__":
     main()
+    
