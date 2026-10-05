@@ -205,7 +205,7 @@ class ExtractionEngine(PipelineEngine):
         """Extract the author using regex patterns applied to the full visible text."""
         global_text = clean_text(soup.get_text(" ", strip=True))
         patterns = site_cfg.get("author_regex_patterns") or [
-            r"(?:Author|By|From\s+the\s+author|Author|Prepared(?:by)?|Text\s+author)\s*[:\-]?\s*([A-Za-zА-Яа-яЁёӨөҮүҚқҒғҲҳӢӣЪъІіЇї'’\-\.\s]{2,120})",
+            r"(?:Author|By|From\s+the\s+author|Prepared(?:by)?|Text\s+author)\s*[:\-]?\s*([A-Za-zА-Яа-яЁёӨөҮүҚқҒғҲҳӢӣЪъІіЇї'’\-\.\s]{2,120})",
             r"(?:written\s+by|reported\s+by)\s*[:\-]?\s*([A-Za-zА-Яа-яЁёӨөҮүҚқҒғҲҳӢӣЪъІіЇї'’\-\.\s]{2,120})",
         ]
         for pat in patterns:
@@ -347,7 +347,7 @@ class ExtractionEngine(PipelineEngine):
                 if val:
                     val = clean_text(val)
                     val = re.sub(
-                        r"^(Author|By|From the author|Author)\s*[:\-]?\s*",
+                        r"^(Author|By|From the author)\s*[:\-]?\s*",
                         "",
                         val,
                         flags=re.I,
@@ -435,7 +435,36 @@ class ExtractionEngine(PipelineEngine):
     # -------------------------------------------------
 
     def extract_category(self, soup: BeautifulSoup, url: str, site_cfg: Dict[str, Any]) -> Optional[str]:
-        """Extract the article category from URL patterns, CSS selectors, or URL path heuristics."""
+        """
+        Extract the article category from URL patterns, CSS selectors, or URL
+        path heuristics.
+
+        Guards against returning raw JSON-LD blobs: some CMS templates place
+        breadcrumb / section metadata inside <script type="application/ld+json">
+        blocks, and a naive selector match would return the serialized JSON
+        instead of a human-readable category. Such values are rejected by
+        `_acceptable_category`, which also enforces a length cap.
+        """
+
+        def _acceptable_category(val: Optional[str]) -> Optional[str]:
+            """Return `val` if it looks like a real category label, else None."""
+            if not val:
+                return None
+            s = clean_text(val)
+            if not s:
+                return None
+            # Reject serialized JSON-LD / JSON arrays.
+            if s.startswith(("{", "[")):
+                return None
+            # Reject values that embed JSON-LD markers even without braces.
+            if "@context" in s or "@type" in s:
+                return None
+            # Category labels are short; anything longer is almost certainly
+            # a metadata blob, a breadcrumb trail, or an HTML fragment.
+            if len(s) > 120:
+                return None
+            return s
+
         strategies = site_cfg.get("category_strategy") or []
 
         if "url_path_parsing" in strategies:
@@ -451,20 +480,27 @@ class ExtractionEngine(PipelineEngine):
             for pattern in patterns:
                 m = re.search(pattern, url)
                 if m:
-                    return m.group(1)
+                    candidate = _acceptable_category(m.group(1))
+                    if candidate:
+                        return candidate
 
         for sel in site_cfg.get("category_selectors", []):
             try:
                 el = self._safe_select_one(soup, sel)
             except Exception:
                 el = None
-            if el:
-                if el.name == "meta" and el.get("content"):
-                    val = clean_text(el.get("content"))
-                else:
-                    val = clean_text(el.get_text(" ", strip=True))
-                if val:
-                    return val
+            if not el:
+                continue
+            # Never read a category out of a <script> body: those blocks hold
+            # JSON-LD, not a visible rubric label.
+            if el.name == "script":
+                continue
+            if el.name == "meta" and el.get("content"):
+                candidate = _acceptable_category(el.get("content"))
+            else:
+                candidate = _acceptable_category(el.get_text(" ", strip=True))
+            if candidate:
+                return candidate
 
         path = get_path(url).lower()
         if "/news/rubric/list/" in path:
@@ -958,3 +994,4 @@ if __name__ == "__main__":
     )
     print(f"Output JSONL: {result.get('output_jsonl', 'N/A')}")
     print(f"Output JSON:  {result.get('output_json', 'N/A')}")
+    

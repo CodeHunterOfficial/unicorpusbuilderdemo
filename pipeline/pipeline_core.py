@@ -234,16 +234,30 @@ class PipelineEngine:
     # -------------------------------------------------
 
     def _build_headers_and_cookies(self, url: str) -> Tuple[Dict[str, str], Dict[str, str]]:
-        g = self.global_cfg()
         site_cfg = self.site_cfg(url)
-        contact = g.get("contact_email", "researcher@example.com")
-        ua = f"UniversalJSONLScraper/6.5 (+{contact})"
+        # Use a realistic browser User-Agent. A custom bot UA is blocked
+        # by anti-bot filters on several news sites (notably alaniatv.ru),
+        # which return a lightweight shell page without article cards.
+        ua = (
+            "Mozilla/5.0 (Windows NT 10.0; Win64; x64) "
+            "AppleWebKit/537.36 (KHTML, like Gecko) "
+            "Chrome/120.0.0.0 Safari/537.36"
+        )
         headers = {
             "User-Agent": ua,
-            "Accept": "text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8",
-            "Accept-Language": "ru-RU,ru;q=0.9,en;q=0.8,tg;q=0.7,uz;q=0.7,ba;q=0.7",
+            "Accept": (
+                "text/html,application/xhtml+xml,application/xml;q=0.9,"
+                "image/avif,image/webp,*/*;q=0.8"
+            ),
+            "Accept-Language": "ru-RU,ru;q=0.9,en;q=0.8,os;q=0.7,tg;q=0.7,uz;q=0.7,ba;q=0.7",
+            "Accept-Encoding": "gzip, deflate, br",
             "Connection": "keep-alive",
             "Upgrade-Insecure-Requests": "1",
+            "Sec-Fetch-Dest": "document",
+            "Sec-Fetch-Mode": "navigate",
+            "Sec-Fetch-Site": "none",
+            "Sec-Fetch-User": "?1",
+            "Cache-Control": "max-age=0",
             "DNT": "1",
         }
         cookies = {}

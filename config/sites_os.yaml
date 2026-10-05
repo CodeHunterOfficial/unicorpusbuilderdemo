@@ -120,22 +120,19 @@ sites:
       - "regex_in_content"
       - "default_fallback"
     rubric_selectors:
+      - "ul.news-categs-list a.news-categs-list__list-item-link"
+      - "ul#menu-novostnoe-menyu a.news-types-list__list-item-link"
+      - "section.section-news-types a[href]"
+      - "a[href*='/news_os_heading/']"
       - "a[href='/news_os/']"
       - "a[href='/news_digoron/']"
-      - ".news-categs-list a[href]"
-      - "a[href*='/news_os_heading/']"
     card_selectors:
       - ".news-list-item"
       - "article.post"
-      - ".news-list-item__title[href]"
-      - ".news-list-item__image"
     article_link_selectors:
-      - ".news-list-item__title[href]"
-      - ".news-list-item__image a[href]"
-      - ".news-list a[href]"
-      - "h2 a"
       - "a[href*='/news_os/']"
       - "a[href*='/news_digoron/']"
+      - "a[href]"
     pagination_selectors:
       - "a.page-numbers"
       - "a.next"
@@ -161,6 +158,7 @@ sites:
       - ".entry-author a"
       - "[class*='author']"
     category_selectors:
+      - "ul.news-categs-list a.news-categs-list__list-item-link"
       - ".breadcrumb a"
       - ".breadcrumb__item a"
       - 'meta[property="article:section"]'
@@ -189,9 +187,9 @@ sites:
       - "/tag/"
       - "/author/"
       - "/feed/"
-      - "/news_os$"
-      - "/news_digoron$"
       - "/news_os_heading/"
+      - "/week_event/"
+      - "/company_news/"
       - ".jpg"
       - ".png"
       - ".pdf"

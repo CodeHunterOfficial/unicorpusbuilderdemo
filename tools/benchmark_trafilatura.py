@@ -18,6 +18,15 @@ The gold text is taken from the first of a fixed list of content
 selectors, or from ``<article>`` / ``<main>`` / ``[role=main]`` /
 ``<body>`` when no selector matches.
 
+Category filter
+---------------
+``_acceptable_category`` mirrors the guard used inside
+``pipeline_extraction.ExtractionEngine.extract_category``: values that
+look like serialized JSON-LD (start with ``{`` / ``[``, or embed
+``@context`` / ``@type``) or that exceed the length cap are rejected.
+This keeps the benchmark consistent with the extractor, so a JSON-LD
+breadcrumb blob is not counted as a successfully extracted category.
+
 Output
 ------
     trafilatura_comparison.csv  one row per URL
@@ -133,6 +142,41 @@ def normalize_date(s):
 def year_month(iso):
     """Return 'YYYY-MM' from an ISO date, or None."""
     return iso[:7] if iso else None
+
+
+# ------------------------------------------------------------------
+# Category filter (mirrors pipeline_extraction._acceptable_category)
+# ------------------------------------------------------------------
+
+def _acceptable_category(val):
+    """
+    Return a cleaned category label, or None if the value does not
+    look like a real category.
+
+    Rejects:
+      * empty values;
+      * serialized JSON / JSON-LD (starts with ``{`` or ``[``);
+      * strings that embed JSON-LD markers (``@context``, ``@type``);
+      * labels longer than 120 characters.
+
+    Keeping this filter identical to the one used by the extraction
+    engine ensures that a JSON-LD breadcrumb blob returned by a bad
+    CSS selector is never counted as a successfully extracted
+    category — neither in the extractor's own output nor in this
+    benchmark.
+    """
+    if not val:
+        return None
+    s = re.sub(r"\s+", " ", str(val)).strip()
+    if not s:
+        return None
+    if s.startswith(("{", "[")):
+        return None
+    if "@context" in s or "@type" in s:
+        return None
+    if len(s) > 120:
+        return None
+    return s
 
 
 # ------------------------------------------------------------------
@@ -369,7 +413,9 @@ def compare_one(engine, art):
         r["ucb_date"] = normalize_date(data.get("date"))
         r["ucb_author"] = data.get("author")
         r["ucb_title"] = data.get("title")
-        r["ucb_category"] = data.get("category")
+        # Store only a valid category label; JSON-LD blobs are rejected
+        # here so that downstream aggregation cannot count them.
+        r["ucb_category"] = _acceptable_category(data.get("category"))
         ucb_content = data.get("content") or ""
         r["ucb_content_len"] = len(ucb_content)
     except Exception as e:
@@ -536,14 +582,17 @@ def evaluate(results):
             if r["traf_title"] and ref[:30].lower() in r["traf_title"].lower():
                 ev["traf_title_ok"] += 1
 
-        # Coverage (global)
+        # Coverage (global) — category goes through _acceptable_category
+        # as a second layer of defence, even though compare_one already
+        # sanitised the value.
+        cat_ok = _acceptable_category(r["ucb_category"]) is not None
         if r["ucb_author"]:   ev["ucb_has_author"] += 1
         if r["traf_author"]:  ev["traf_has_author"] += 1
         if r["ucb_title"]:    ev["ucb_has_title"] += 1
         if r["traf_title"]:   ev["traf_has_title"] += 1
         if r["ucb_date"]:     ev["ucb_has_date"] += 1
         if r["traf_date"]:    ev["traf_has_date"] += 1
-        if r["ucb_category"]: ev["ucb_has_category"] += 1
+        if cat_ok:            ev["ucb_has_category"] += 1
 
         # Coverage (per site)
         if r["ucb_author"]:   cov[site]["ucb_author"] += 1
@@ -552,7 +601,7 @@ def evaluate(results):
         if r["traf_title"]:   cov[site]["traf_title"] += 1
         if r["ucb_date"]:     cov[site]["ucb_date"] += 1
         if r["traf_date"]:    cov[site]["traf_date"] += 1
-        if r["ucb_category"]: cov[site]["ucb_category"] += 1
+        if cat_ok:            cov[site]["ucb_category"] += 1
 
         # Coverage (per language)
         if r["ucb_author"]:   by_lang[lang]["ucb_author"] += 1
@@ -736,6 +785,7 @@ def print_report(ev, cov, by_lang, results, out_csv, out_cov):
             "traf_date_pct": round(c["traf_date"]/tot*100, 1),
             "ucb_title_pct": round(c["ucb_title"]/tot*100, 1),
             "traf_title_pct": round(c["traf_title"]/tot*100, 1),
+            "ucb_category_pct": round(c["ucb_category"]/tot*100, 1),
             "ucb_rouge_l_mean": round(rl_ucb["mean"], 4) if rl_ucb else None,
             "traf_rouge_l_mean": round(rl_tf["mean"], 4) if rl_tf else None,
             "ucb_word_f1_mean": round(wf_ucb["mean"], 4) if wf_ucb else None,
@@ -863,6 +913,7 @@ def print_report(ev, cov, by_lang, results, out_csv, out_cov):
             "ucb_author_pct", "traf_author_pct",
             "ucb_date_pct", "traf_date_pct",
             "ucb_title_pct", "traf_title_pct",
+            "ucb_category_pct",
             "ucb_rouge_l_mean", "traf_rouge_l_mean",
             "ucb_rouge_l_n", "traf_rouge_l_n",
             "ucb_word_f1_mean", "traf_word_f1_mean",
@@ -918,3 +969,4 @@ def main():
 
 if __name__ == "__main__":
     main()
+    
