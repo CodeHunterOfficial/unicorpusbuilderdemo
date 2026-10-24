@@ -94,6 +94,21 @@ def parse_datetime_value(
     value: Optional[str],
     locale_map: Optional[Dict[str, str]] = None,
 ) -> Optional[str]:
+    """
+    Parse a date/time string into ISO format.
+
+    ``ignoretz=True`` is required because ``dateutil`` raises
+    ``UnknownTimezoneWarning`` when it sees a token it believes is a
+    timezone name but cannot resolve — for example ``IV`` appears in
+    some dates on ``tatar-inform`` pages and gets mistaken for a
+    timezone. ``ignoretz=True`` returns a naive ``datetime`` and
+    suppresses that warning path entirely. Every downstream consumer
+    of this value is date-oriented (``normalize_date``, ISO output), so
+    dropping the timezone is lossless for this pipeline.
+
+    Returns the parsed ISO string on success, the original value on
+    parse failure, or ``None`` on empty input.
+    """
     if not value:
         return None
     value = clean_text(value)
@@ -102,7 +117,7 @@ def parse_datetime_value(
     # Apply locale mapping before parsing
     value = apply_date_locale(value, locale_map)
     try:
-        dt = dateparser.parse(value, fuzzy=True)
+        dt = dateparser.parse(value, fuzzy=True, ignoretz=True)
         if dt:
             return dt.isoformat()
     except Exception:
@@ -136,8 +151,9 @@ def is_noise_text(text: str, noise_words: Optional[List[str]] = None) -> bool:
     if len(t) < 3:
         return True
     if noise_words is None:
-        noise_words = []        
+        noise_words = []
     return any(x in t for x in noise_words)
+
 
 def ensure_list(v: Any) -> List[Any]:
     if v is None:
@@ -211,14 +227,14 @@ class PipelineEngine:
         locale_name = site_cfg.get("date_locale")
         if not locale_name:
             return None
-        
+
         # New modular path: config.languages.<lang>.date_locale
         languages = self.root_cfg.get("languages", {})
         if isinstance(languages, dict) and locale_name in languages:
             lang_pkg = languages[locale_name]
             if isinstance(lang_pkg, dict):
                 return lang_pkg.get("date_locale")
-        
+
         # Fallback: old monolithic path reusable_strategies.date_locale
         reusable = self.root_cfg.get("reusable_strategies", {})
         date_locales = reusable.get("date_locale", {})
@@ -226,7 +242,7 @@ class PipelineEngine:
             result = date_locales.get(locale_name)
             if result:
                 return result
-        
+
         return None
 
     # -------------------------------------------------
@@ -313,13 +329,13 @@ class PipelineEngine:
         timeout = api_cfg.get('timeout', self.request_cfg().get('timeout', 30))
         retries = api_cfg.get('retries', self.request_cfg().get('retries', 3))
         backoff_base = self.request_cfg().get('backoff_base', 1.6)
-        
+
         sess = self._session()
         headers, cookies = self._build_headers_and_cookies(url)
         # Add API-specific headers if specified in config
         extra_headers = api_cfg.get('headers', {})
         headers.update(extra_headers)
-        
+
         for attempt in range(retries):
             try:
                 r = sess.get(url, headers=headers, cookies=cookies,
@@ -617,7 +633,7 @@ class PipelineEngine:
         """Parameterized extraction of news list from API JSON response."""
         api_cfg = site_cfg['api_source']
         items_path = api_cfg.get('items_path', 'data')
-        
+
         # Find the container with items
         container = payload
         for part in items_path.split('.'):
@@ -627,18 +643,18 @@ class PipelineEngine:
                 container = []
         if not isinstance(container, list):
             return []
-        
+
         fm = api_cfg.get('field_map', {})
         nested = api_cfg.get('nested_extraction', {})
         url_template = fm.get('url_template')
         site_url = api_cfg.get('site_url', '')
-        
+
         items = []
         for obj in container:
             item = {}
             item['id'] = self._get_nested_value(obj, fm.get('id'))
             item['title'] = self._get_nested_value(obj, fm.get('title'))
-            
+
             # Date: try multiple fields
             date_val = None
             for date_field in ensure_list(fm.get('date', [])):
@@ -646,15 +662,15 @@ class PipelineEngine:
                 if date_val:
                     break
             item['date'] = date_val
-            
+
             item['content_html'] = self._get_nested_value(obj, fm.get('content_html'))
-            
+
             # Generate article URL
             if url_template:
                 item['url'] = url_template.format(site_url=site_url, id=item.get('id'))
             else:
                 item['url'] = None
-            
+
             # Nested lists (images, categories, cities)
             for key, rule in nested.items():
                 path = rule.get('path')
@@ -666,17 +682,17 @@ class PipelineEngine:
                     if val:
                         values.append(val)
                 item[key] = values
-            
+
             # Keep raw data
             item['raw'] = obj
             items.append(item)
-        
+
         return items
 
     def collect_rubrics(self, base_url: str, context_rubrics: Optional[Iterable[str]] = None) -> List[str]:
         """
         Universal rubric (category/section) collection for any site from config.
-        """               
+        """
         if context_rubrics:
             out: List[str] = []
             for r in context_rubrics:
@@ -687,7 +703,7 @@ class PipelineEngine:
 
         site_cfg = self.site_cfg(base_url)
         if site_cfg.get('api_source', {}).get('enabled'):
-            return []          
+            return []
         strategies = site_cfg.get("rubric_strategy") or self.global_cfg().get(
             "rubric_strategies_order"
         ) or ["menu_scraping"]
@@ -889,7 +905,7 @@ class PipelineEngine:
                         title = clean_text(link_node.get_text(" ", strip=True))
                         noise_words = site_cfg.get("_noise_words", [])
                         if title and is_noise_text(title, noise_words):
-                            continue 
+                            continue
                     if not title:
                         for tag_name in ["h1", "h2", "h3", "h4", "a"]:
                             n = card.find(tag_name)
@@ -951,7 +967,7 @@ class PipelineEngine:
 
                 if url in seen_urls:
                     continue
-                txt = clean_text(a.get_text(" ", strip=True))                
+                txt = clean_text(a.get_text(" ", strip=True))
                 if is_noise_text(txt, site_cfg.get("_noise_words", [])):
                     continue
                 if len(txt) < 8:
@@ -985,7 +1001,7 @@ class PipelineEngine:
             return self.detect_page_candidates_api(
                 start_url, site_cfg_main
             )
-        
+
         limits = self.limits_cfg()
         max_pages = int(limits.get("max_pages", 250))
         max_depth = int(limits.get("max_depth", 3))
@@ -1143,15 +1159,15 @@ class PipelineEngine:
         site_cfg: Dict[str, Any],
         max_items: int = None
     ) -> Dict[str, Dict[str, Any]]:
-        
+
         api_cfg = site_cfg['api_source']
         last_page = self._get_api_last_page(site_cfg)
         delay = api_cfg.get('delay', 0.15)
         discovered = {}
-        
+
         max_items = max_items or self.limits_cfg().get('max_items', 10000)
         logger.info(f"Starting API crawl: last_page={last_page}, max_items={max_items}")
-        
+
         for page in range(1, last_page + 1):
             if len(discovered) >= max_items:
                 break
@@ -1159,7 +1175,7 @@ class PipelineEngine:
             try:
                 data = self.fetch_api_json(url, site_cfg)
                 items = self._extract_api_items(data, site_cfg)
-                
+
                 for item in items:
                     article_url = item.get('url')
                     if not article_url:
@@ -1184,12 +1200,12 @@ class PipelineEngine:
                 logger.error(f"Error on page {page}: {e}")
                 print(f"[ERROR] Page {page}: {e}")
                 continue
-            
+
             time.sleep(delay)
-        
+
         logger.info(f"API crawl finished: {len(discovered)} candidates")
         return discovered
-    
+
     # -------------------------------------------------
     # Convenience API
     # -------------------------------------------------
@@ -1291,3 +1307,4 @@ if __name__ == "__main__":
     logger.info(f"Smoke test: config={yaml_path}, url={start}")
     engine = PipelineEngine(yaml_path=yaml_path)
     print(json.dumps(engine.stats(start), ensure_ascii=False, indent=2))
+    

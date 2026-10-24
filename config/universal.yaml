@@ -13,5 +13,4 @@ includes:
   - sites_tg.yaml
   - sites_ba.yaml
   - sites_ru.yaml
-  - sites_uz.yaml
   - sites_os.yaml
