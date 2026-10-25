@@ -16,6 +16,9 @@ sites:
       - "nuxt_state_parsing"
       - "menu_scraping"
       - "pattern_fallback"
+    category_strategy:
+      - "meta_tag"
+      - "url_path_parsing"      
     author_strategy:
       - "json_ld_graph"
       - "json_ld_simple"
@@ -100,6 +103,9 @@ sites:
     rubric_strategy:
       - "nuxt_state_parsing"
       - "pattern_fallback"
+    category_strategy:
+      - "meta_tag"
+      - "url_path_parsing"      
     author_strategy:
       - "json_ld_graph"
       - "json_ld_simple"

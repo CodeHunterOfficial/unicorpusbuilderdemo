@@ -10,7 +10,6 @@ sites:
     match:
       - "tatar-inform.tatar"
       - "tatar-inform.ru"
-    default_author: "Tatar-inform"
     default_language: "tt"
     noise_language: ["common", "tt", "ru"]
     start_url: "https://tatar-inform.tatar/"
@@ -136,6 +135,9 @@ sites:
     rubric_strategy:
       - "menu_scraping"
       - "pattern_fallback"
+    category_strategy:
+      - "meta_tag"
+      - "url_path_parsing"
     author_strategy:
       - "meta_tag"
       - "class_selector"
@@ -206,7 +208,6 @@ sites:
       - ".single__tags"
       - ".single__gallery"
       - ".single__authors"
-      - ".single__date-rubric"
       - ".banner"
       - ".advertisement"
       - ".share"

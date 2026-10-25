@@ -249,21 +249,38 @@ def year_month(iso_date: Optional[str]) -> Optional[str]:
     """Return ``YYYY-MM`` from an ISO date, or None."""
     return iso_date[:7] if iso_date else None
 
+_GENERIC_CATEGORY_LABELS = frozenset({
+    'главная', 'главная страница', 'home', 'main', 'index', 'начало',
+    'новости', 'новость', 'news', 'novosti',
+    'common_material', 'common materials', 'материалы', 'статьи',
+    'фото', 'photo', 'видео', 'video',
+    'архив', 'archive',
+    'разное', 'other', 'прочее',
+    'рубрика', 'категория', 'раздел', 'тег', 'tag', 'rubric', 'category',
+})
 
-# ---------------------------------------------------------------------------
-# Category guard (mirrors pipeline_extraction._acceptable_category)
-# ---------------------------------------------------------------------------
+_CAT_MONTHS = (
+    r'январ\w*|феврал\w*|март\w*|апрел\w*|ма[йя]|июн\w*|июл\w*|'
+    r'август\w*|сентябр\w*|октябр\w*|ноябр\w*|декабр\w*|'
+    r'january|february|march|april|may|june|july|august|september|'
+    r'october|november|december'
+)
+
+_DATE_ONLY_CAT_RE = re.compile(
+    rf'^\d{{1,2}}\s+(?:{_CAT_MONTHS})\s+\d{{4}}(?:,?\s+\d{{1,2}}:\d{{2}})?$',
+    re.IGNORECASE,
+)
+_DATE_EMBEDDED_CAT_RE = re.compile(
+    rf'\d{{1,2}}\s+(?:{_CAT_MONTHS})',
+    re.IGNORECASE,
+)
+
 
 def _acceptable_category(value: Optional[str]) -> Optional[str]:
-    """
-    Return a cleaned category label, or None if the value does not
-    look like a real category.
+    """Возвращает содержательную рубрику или None.
 
-    Rejected:
-      * empty or whitespace-only values;
-      * serialized JSON / JSON-LD (leading ``{`` or ``[``);
-      * strings embedding ``@context`` or ``@type``;
-      * labels longer than 120 characters.
+    Тот же фильтр, что в pipeline/pipeline_extraction.py — чтобы
+    UCB и Trafilatura фильтровались одинаково.
     """
     if not value:
         return None
@@ -276,6 +293,20 @@ def _acceptable_category(value: Optional[str]) -> Optional[str]:
         return None
     if len(text) > 120:
         return None
+
+    low = text.lower().strip()
+
+    if low in _GENERIC_CATEGORY_LABELS:
+        return None
+    if _DATE_ONLY_CAT_RE.match(text):
+        return None
+    if _DATE_EMBEDDED_CAT_RE.search(text):
+        return None
+    if ' ' not in text and text.count('-') >= 2:
+        return None
+    if re.fullmatch(r'[a-z]{3,}', text):
+        return None
+
     return text
 
 
@@ -488,20 +519,21 @@ def content_metrics(prediction: Optional[str], gold: Optional[str]) -> dict[str,
 
     return out
 
-
-# ---------------------------------------------------------------------------
-# URL collection
-# ---------------------------------------------------------------------------
-
 def gather_from_config(
     engine: ExtractionEngine,
     langs: list[str],
     sites_per_lang: int,
     articles_per_site: int,
     exclude: Optional[list[str]] = None,
+    sites_filter: Optional[list[str]] = None,
 ) -> list[dict[str, str]]:
-    """Select sites by language and collect article URLs from each."""
+    """Select sites by language and collect article URLs from each.
+
+    If ``sites_filter`` is provided, it overrides ``sites_per_lang``:
+    only the explicitly listed site keys are processed.
+    """
     exclude_set = set(exclude or [])
+    sites_set = set(sites_filter) if sites_filter else None
     config = load_modular_config(engine.yaml_path)
     sites = config.get("sites", {})
 
@@ -511,16 +543,20 @@ def gather_from_config(
             continue
         if site_key in exclude_set:
             continue
+        if sites_set is not None and site_key not in sites_set:
+            continue
         lang = site_cfg.get("default_language")
         if lang not in langs:
             continue
-        if len(by_lang[lang]) >= sites_per_lang:
+        if sites_set is None and len(by_lang[lang]) >= sites_per_lang:
             continue
         by_lang[lang].append((site_key, site_cfg))
 
     print("\n[PLAN] Sites to process:")
     if exclude_set:
         print(f"    (excluded: {', '.join(sorted(exclude_set))})")
+    if sites_set is not None:
+        print(f"    (explicit --sites: {', '.join(sorted(sites_set))})")
     for lang in sorted(by_lang):
         names = [key for key, _ in by_lang[lang]]
         print(f"    {lang}: {', '.join(names)}")
@@ -539,7 +575,6 @@ def gather_from_config(
                 urls.append({"url": url, "site": site_key, "lang": lang})
             print(f"    -> {len(site_urls)} URLs")
     return urls
-
 
 # ---------------------------------------------------------------------------
 # Per-URL comparison
@@ -1293,6 +1328,10 @@ def main(argv: Optional[list[str]] = None) -> int:
     parser.add_argument("--sites-per-lang", type=int, default=2)
     parser.add_argument("--articles-per-site", type=int, default=20)
     parser.add_argument("--exclude", nargs="*", default=["sssr", "ozodi"])
+    parser.add_argument(
+        "--sites", nargs="+", default=None,
+        help="Explicit site keys (overrides --sites-per-lang)",
+    )
 
     args = parser.parse_args(argv)
 
@@ -1310,7 +1349,9 @@ def main(argv: Optional[list[str]] = None) -> int:
         args.sites_per_lang,
         args.articles_per_site,
         exclude=args.exclude,
+        sites_filter=args.sites,
     )
+    
     if not urls:
         print("[ERROR] No URLs collected.")
         return 1

@@ -422,7 +422,6 @@ sites:
   tatar-inform:
     match:
       - "tatar-inform.tatar"
-    default_author: "Tatar-inform"
     default_language: "tt"
     noise_language: ["common", "tt"]
     rubric_strategy:

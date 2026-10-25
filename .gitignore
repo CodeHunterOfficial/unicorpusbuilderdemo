@@ -116,3 +116,4 @@ hf_quality_summary.csv
 hf_count_summary.csv
 trafilatura_coverage.csv
 _tmp/
+_cache_author_verification/

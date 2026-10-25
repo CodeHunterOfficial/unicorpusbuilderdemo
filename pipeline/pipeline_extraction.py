@@ -86,6 +86,67 @@ _CONTENT_LABEL_RE = re.compile(
     re.I,
 )
 
+_GENERIC_CATEGORY_LABELS = frozenset({
+    'главная', 'главная страница', 'home', 'main', 'index', 'начало',
+    'новости', 'новость', 'news', 'novosti',
+    'common_material', 'common materials', 'материалы', 'статьи',
+    'фото', 'photo', 'видео', 'video',
+    'архив', 'archive',
+    'разное', 'other', 'прочее',
+    'рубрика', 'категория', 'раздел', 'тег', 'tag', 'rubric', 'category',
+})
+
+_CAT_MONTHS = (
+    r'январ\w*|феврал\w*|март\w*|апрел\w*|ма[йя]|июн\w*|июл\w*|'
+    r'август\w*|сентябр\w*|октябр\w*|ноябр\w*|декабр\w*|'
+    r'january|february|march|april|may|june|july|august|september|'
+    r'october|november|december'
+)
+
+_DATE_ONLY_CAT_RE = re.compile(
+    rf'^\d{{1,2}}\s+(?:{_CAT_MONTHS})\s+\d{{4}}(?:,?\s+\d{{1,2}}:\d{{2}})?$',
+    re.IGNORECASE,
+)
+_DATE_EMBEDDED_CAT_RE = re.compile(
+    rf'\d{{1,2}}\s+(?:{_CAT_MONTHS})',
+    re.IGNORECASE,
+)
+
+
+def _acceptable_category(val: Optional[str]) -> Optional[str]:
+    """Возвращает содержательную рубрику или None.
+
+    Отсекает: JSON-LD-блоки, слишком длинные строки, обобщённые метки
+    («Главная», «news», «common_material»), чистые даты, склейки
+    «рубрика + дата», URL-слаги.
+    """
+    if not val:
+        return None
+    s = clean_text(val)
+    if not s:
+        return None
+    if s.startswith(("{", "[")):
+        return None
+    if "@context" in s or "@type" in s:
+        return None
+    if len(s) > 120:
+        return None
+
+    low = s.lower().strip()
+
+    if low in _GENERIC_CATEGORY_LABELS:
+        return None
+    if _DATE_ONLY_CAT_RE.match(s):
+        return None
+    if _DATE_EMBEDDED_CAT_RE.search(s):
+        return None
+    if ' ' not in s and s.count('-') >= 2:
+        return None
+    if re.fullmatch(r'[a-z]{3,}', s):
+        return None
+
+    return s
+
 def _looks_like_author_name(value: Optional[str]) -> bool:
     """
     Return True if ``value`` plausibly names a person.
@@ -525,36 +586,15 @@ class ExtractionEngine(PipelineEngine):
                         return parsed
         return None
 
-    # -------------------------------------------------
-    # Category
-    # -------------------------------------------------
-
     def extract_category(self, soup: BeautifulSoup, url: str, site_cfg: Dict[str, Any]) -> Optional[str]:
         """
-        Extract the article category from URL patterns, CSS selectors, or URL
-        path heuristics.
+        Extract the article category from URL patterns, CSS selectors,
+        or URL path heuristics.
 
-        Guards against returning raw JSON-LD blobs: some CMS templates place
-        breadcrumb / section metadata inside ``<script type="application/ld+json">``
-        blocks, and a naive selector match would return the serialized JSON
-        instead of a human-readable category. Such values are rejected by
-        ``_acceptable_category``, which also enforces a length cap.
+        All candidates pass through the module-level ``_acceptable_category``,
+        which rejects JSON-LD blobs, generic labels, dates, rubric+date
+        concatenations, and URL slugs.
         """
-
-        def _acceptable_category(val: Optional[str]) -> Optional[str]:
-            """Return ``val`` if it looks like a real category label, else None."""
-            if not val:
-                return None
-            s = clean_text(val)
-            if not s:
-                return None
-            if s.startswith(("{", "[")):
-                return None
-            if "@context" in s or "@type" in s:
-                return None
-            if len(s) > 120:
-                return None
-            return s
 
         strategies = site_cfg.get("category_strategy") or []
 
@@ -582,8 +622,6 @@ class ExtractionEngine(PipelineEngine):
                 el = None
             if not el:
                 continue
-            # Never read a category out of a <script> body: those blocks hold
-            # JSON-LD, not a visible rubric label.
             if el.name == "script":
                 continue
             if el.name == "meta" and el.get("content"):
@@ -595,13 +633,9 @@ class ExtractionEngine(PipelineEngine):
 
         path = get_path(url).lower()
         if "/news/rubric/list/" in path:
-            return path.split("/news/rubric/list/")[-1].split("/")[0].split("?")[0]
-        if "/news/" in path:
-            return "news"
-        if "/photo/" in path:
-            return "photo"
-        if "/video/" in path:
-            return "video"
+            slug = path.split("/news/rubric/list/")[-1].split("/")[0].split("?")[0]
+            return _acceptable_category(slug)
+
         return None
 
     # -------------------------------------------------
