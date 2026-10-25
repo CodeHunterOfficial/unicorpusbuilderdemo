@@ -137,104 +137,47 @@ sites:
       - "/a/"
     article_url_excludes: []
 
-  # ============================================================
-  # asiaplustj.info — major Tajik news portal
-  # ============================================================
   asiaplustj:
-    match:
-      - "asiaplus.news"
-      - "asiaplustj.info"
+    match: ["asiaplus.news"]
     default_language: "tg"
-    noise_language: ["common", "tg", "ru"]
-    start_url: "https://asiaplus.news/tg/homepage-tj/"
-    rubric_strategy:
-      - "menu_scraping"
-      - "pattern_fallback"
-    author_strategy:
-      - "class_selector"
-      - "meta_tag"
-      - "json_ld_graph"
-      - "json_ld_simple"
-      - "regex_in_content"
-      - "default_fallback"
-    rubric_selectors:
-      - "div[class*='menu-'][class*='-container'] a[href*='/tg/category/']"
-      - "div[class*='menu-'] a[href*='/tg/category/']"
-      - "nav a[href*='/tg/category/']"
-      - "a[href*='/tg/category/']"
+    start_url: "https://asiaplus.news/tg/hamai-ahbor/"
     card_selectors:
-      - "div.td_module_wrap"
-      - "div.td_module_flex"
-      - "div.td_module_6"
-      - "article"
+      - ".ap-card"
     article_link_selectors:
-      - "h3.entry-title a[href]"
-      - "h3.td-module-title a[href]"
-      - "a.td-image-wrap[href]"
-    pagination_selectors:
-      - "a.page-numbers"
-      - "a.next.page-numbers"
-      - "ul.pagination a[href]"
-      - "link[rel='next']"
-      - "a[href*='/page/']"
+      - "a.ap-card__link"
+      - "a.ap-card__media"
+      - "h2.ap-card__title a"
+    article_url_filters:
+      - "/tg/2026/"
+      - "/tg/2025/"
+    article_url_excludes:
+      - "/category/"
+      - "/author/"
+      - "/homepage-"
+      - ".jpg"
+      - ".png"
     title_selectors:
-      - "h1.entry-title"
-      - "h1.tdb-title-text"
-      - "h1"
-      - 'meta[property="og:title"]'
-      - "title"
+      - "h1.ap-single__title"
+      - "meta[property='og:title']"
     date_selectors:
-      - 'meta[property="article:published_time"]'
-      - 'meta[property="og:updated_time"]'
-      - "time.entry-date"
+      - "meta[property='article:published_time']"
       - "time[datetime]"
     author_selectors:
-      - "span.td-post-author-name a"
-      - ".td-post-author-name"
-      - ".tdb-author-name"
-      - 'meta[name="twitter:data1"]'
-      - 'meta[name="author"]'
-      - 'meta[property="article:author"]'
+      - ".ap-author__link"
+      - ".ap-single__author"
     category_selectors:
-      - 'meta[property="article:section"]'
-      - "a.td-post-category"
-      - ".tdb-breadcrumbs a"
-      - ".td-category a"
+      - "dd.ap-single__terms a"
+      - "meta[property='article:section']"
     content_selectors:
-      - "div.td-post-content"
-      - ".tdb-block-inner.td-fix-index"
-      - "article"
-      - "main"
+      - "div.ap-content.entry-content"
+      - "article.ap-single"
     remove_selectors:
       - "script"
       - "style"
       - "noscript"
-      - "iframe"
-      - ".td-post-sharing"
-      - ".td-social-sharing"
-      - ".td-related-row"
-      - ".td-block-row"
-      - ".apblk-callout"
+      - ".ap-single__share"
+      - ".ap-follow-row"
       - ".apblk-quote"
-      - ".banner"
-      - ".advertisement"
-      - ".widget"
-      - ".sidebar"
-    article_url_filters:
-      - "/tg/20"
-    article_url_excludes:
-      - "/tag/"
-      - "/category/"
-      - "/author/"
-      - "/page/"
-      - "/feed/"
-      - "/wp-content/"
-      - ".jpg"
-      - ".png"
-      - ".pdf"
-    category_strategy:
-      - "meta_tag"
-      - "url_path_parsing"
 
   # ============================================================
   # khovar.tj — national information agency of Tajikistan

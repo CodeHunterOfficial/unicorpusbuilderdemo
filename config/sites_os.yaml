@@ -100,6 +100,9 @@ sites:
       - ".png"
       - ".pdf"
 
+  # ============================================================
+  # alaniatv.ru — Ossetian news (Iron / Digoron)
+  # ============================================================
   alaniatv:
     match:
       - "alaniatv.ru"
@@ -118,8 +121,9 @@ sites:
       - "regex_in_content"
       - "default_fallback"
     rubric_selectors:
-      - "a[href='/teleproject_release/']"
       - "section.section-project-header a[href]"
+      - "a[href='/teleproject_release/']"
+      - "a[href='/arhiv-proektov/']"
     card_selectors:
       - ".new-release-item"
       - ".readable-slider__slide"
@@ -127,24 +131,28 @@ sites:
       - "a[href*='/teleproject_release/']"
     pagination_selectors:
       - "a.page-numbers"
+      - "a.next"
       - "a[href*='/page/']"
     title_selectors:
       - "meta[property='og:title']"
       - ".single-header__title"
       - "h1"
     date_selectors:
-      - "meta[property='article:published_time']"
       - "meta[property='article:modified_time']"
+      - "meta[property='article:published_time']"
       - ".single-header__date"
       - "time[datetime]"
     author_selectors:
       - 'meta[name="author"]'
+      - 'meta[name="Author"]'
       - 'meta[property="article:author"]'
       - ".content__author"
       - ".single-header__author a"
+      - ".entry-author a"
     category_selectors:
-      - ".breadcrumb a"
       - 'meta[property="article:section"]'
+      - ".breadcrumb a"
+      - ".single__date-rubric a"
     content_selectors:
       - "div.content"
       - "article"
@@ -155,11 +163,13 @@ sites:
       - "noscript"
       - "iframe"
       - ".video"
+      - ".single-header"
       - ".share-row"
       - ".rambler-share"
       - ".yandex-news"
       - ".banner"
       - ".advertisement"
+      - ".mistake"
     article_url_filters:
       - "/teleproject_release/"
     article_url_excludes:
@@ -168,9 +178,13 @@ sites:
       - "/tag/"
       - "/author/"
       - "/feed/"
+      - "/arhiv-proektov/"
       - "/teleproject_release/page/"
+      - "/attachments/"
       - ".jpg"
+      - ".jpeg"
       - ".png"
+      - ".gif"
       - ".pdf"
       
   # ============================================================

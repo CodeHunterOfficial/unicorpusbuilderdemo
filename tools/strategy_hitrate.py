@@ -431,8 +431,9 @@ _MONTH_NAMES = (
 )
 
 _READING_TIME_RE = re.compile(
-    r"\s*\d+\s*(мин|мин\.|минут[аыу]?|час(а|ов)?|ч|сек(унд[аыу]?)?)"
-    r"(\s+(чтения|просмотра|на\s+чтение|чтение))?\s*\.?\s*",
+    r"\s*\d+\s*(мин|мин\.|минут[аыу]?|час(а|ов)?|ч|сек(унд[аыу]?)?"
+    r"|min(ute)?s?|hour(s)?|hrs?|sec(ond)?s?)\b"
+    r"(\s+(чтения|просмотра|на\s+чтение|чтение|(?:to\s+)?read(?:ing)?))?\s*\.?\s*",
     re.I,
 )
 
@@ -442,6 +443,32 @@ _DATE_ONLY_RE = re.compile(
     re.I,
 )
 
+_CONTENT_LABEL_RE = re.compile(
+    r"^\s*(?:"
+    r"партн[её]рск(?:ий|ая|ое|ие)\s+материал"
+    r"|маводи\s+шарикона"
+    r"|спонсорск(?:ий|ая|ое|ие)\s+материал"
+    r"|рекламн(?:ый|ая|ое|ые)\s+материал"
+    r"|реклама|промо"
+    r"|advertorial|sponsored(?:\s+content|\s+post)?"
+    r"|partner\s+material|paid\s+post"
+    r")\s*$",
+    re.I,
+)
+
+_CONTENT_LABEL_RE = re.compile(
+    r"^\s*(?:"
+    r"партн[её]рск(?:ий|ая|ое|ие)\s+материал"
+    r"|маводи\s+шарикона"
+    r"|спонсорск(?:ий|ая|ое|ие)\s+материал"
+    r"|рекламн(?:ый|ая|ое|ые)\s+материал"
+    r"|реклама|промо"
+    r"|advertorial|sponsored(?:\s+content|\s+post)?"
+    r"|partner\s+material|paid\s+post"
+    r"|reading\s+time|time\s+to\s+read|время\s+чтения"
+    r")\s*$",
+    re.I,
+)
 
 def _looks_like_author_name(value: Optional[str]) -> bool:
     """
@@ -461,6 +488,10 @@ def _looks_like_author_name(value: Optional[str]) -> bool:
     text = value.strip()
     if len(text) < 2 or len(text) > 120:
         return False
+    if _CONTENT_LABEL_RE.match(text):        
+        return False    
+    if _CONTENT_LABEL_RE.match(text):         
+            return False      
     if _READING_TIME_RE.fullmatch(text):
         return False
     if _DATE_ONLY_RE.fullmatch(text):

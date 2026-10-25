@@ -19,6 +19,8 @@ from typing import Any, Deque, Dict, Iterable, List, Optional, Set, Tuple
 from urllib.parse import parse_qs, urlencode, urljoin, urlparse, urlunparse, urldefrag
 
 import requests
+import urllib3
+urllib3.disable_warnings(urllib3.exceptions.InsecureRequestWarning)
 from bs4 import BeautifulSoup, Tag
 from dateutil import parser as dateparser
 import warnings
