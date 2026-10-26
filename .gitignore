@@ -117,3 +117,5 @@ hf_count_summary.csv
 trafilatura_coverage.csv
 _tmp/
 _cache_author_verification/
+config_stats.txt
+sites_actual.txt

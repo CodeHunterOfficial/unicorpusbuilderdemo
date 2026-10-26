@@ -19,8 +19,7 @@ ROUGE tokenizer
 only ``[a-z0-9]``, so ROUGE returns 0 on identical Cyrillic text. This
 module passes ``_UnicodeTokenizer``, a subclass of
 ``rouge_score.tokenizers.Tokenizer`` whose ``tokenize`` splits on
-``\\w+`` under ``re.UNICODE`` (see ``rouge_score/tokenizers.py``,
-Google Research, 2026, lines 13-17).
+``\\w+`` under ``re.UNICODE``.
 
 Author comparison
 -----------------
@@ -29,28 +28,27 @@ Author comparison
 matches: "Aleksandr Alekseev" matched "Aleksandr Aleksandrov".
 
 ``_looks_like_author_name`` rejects non-name strings that some sites
-expose through ``author_selectors`` or ``meta``: reading times
-("1 минута"), dates ("15 марта 2024"), URLs and e-mail-like values.
-Keep this filter in sync with
-``pipeline_extraction._looks_like_author_name`` so the measurement
-matches the (fixed) extractor.
+expose through ``author_selectors`` or ``meta``: reading times, dates,
+CMS logins, relative days, URLs and e-mail addresses. Keep this filter
+in sync with ``pipeline_extraction._looks_like_author_name`` so that
+the measurement matches the extractor.
 
 Date correctness
 ----------------
 ``_date_correct`` uses ``dateparser.parse(..., ignoretz=True)`` on
-both values, matching ``pipeline_core.parse_datetime_value``. Without
-it, ``dateutil`` raises ``UnknownTimezoneWarning`` on tokens such as
-``IV`` that look like timezone names but are not.
+both values, matching ``pipeline_core.parse_datetime_value``.
 
 URL sources
 -----------
-Config mode — sites selected by language from ``config/universal.yaml``;
-File mode   — URLs read from local JSONL files.
+Config mode — sites selected from ``config/universal.yaml``, either by
+language (``--langs`` + ``--sites-per-lang``) or by explicit site keys
+(``--sites``). File mode — URLs read from local JSONL files.
 
 Usage
 -----
     python tools/strategy_hitrate.py
     python tools/strategy_hitrate.py --langs tg tt ba os --sites-per-lang 2 --articles-per-site 20
+    python tools/strategy_hitrate.py --sites khovar tatar-inform vatantat akbuzat yanshishma iryston
     python tools/strategy_hitrate.py --exclude sssr ozodi
     python tools/strategy_hitrate.py --input-files "D:\\...\\file1.jsonl" "D:\\...\\file2.jsonl"
 
@@ -72,9 +70,6 @@ from dataclasses import dataclass
 from pathlib import Path
 from typing import Any, Optional
 
-# Both the project root and tools/ must be importable:
-#   * project root → config.*, pipeline.*
-#   * tools/       → _common
 _PROJECT_ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 _TOOLS_DIR = os.path.dirname(os.path.abspath(__file__))
 sys.path.insert(0, _PROJECT_ROOT)
@@ -97,9 +92,6 @@ logger = get_file_logger("strategy_hitrate", "logs/strategy_hitrate.log")
 # ---------------------------------------------------------------------------
 # ROUGE with a Unicode-aware tokenizer
 # ---------------------------------------------------------------------------
-# rouge_score.tokenizers.Tokenizer is an ABC with a single abstract
-# method ``tokenize(self, text)``. Subclass it; ``__call__`` is added
-# for callers that pass the tokenizer as a plain function.
 
 try:
     from rouge_score.tokenizers import Tokenizer as _RougeTokenizerBase
@@ -116,9 +108,9 @@ class _UnicodeTokenizer(_RougeTokenizerBase):
     r"""
     Unicode-aware tokenizer compatible with rouge_score.
 
-    Splits on ``\w+`` under ``re.UNICODE``, lowercases the input, and
-    ignores extra keyword arguments (``stemmer``) that some
-    rouge-score versions forward to ``tokenize``.
+    Splits on ``\w+`` under ``re.UNICODE`` and lowercases the input.
+    Ignores extra keyword arguments that some rouge-score versions
+    forward to ``tokenize``.
     """
 
     def tokenize(self, text: str, *args: Any, **kwargs: Any) -> list[str]:
@@ -250,9 +242,9 @@ def compute_quality(gold: str, prediction: str) -> dict[str, Any]:
     """
     Compute ROUGE-1, ROUGE-L, word-level P/R/F1 and length ratio.
 
-    Fields are None when they cannot be computed, e.g. gold text is
-    shorter than 300 characters. ROUGE scoring failures are logged
-    once and do not abort the run.
+    Fields are None when they cannot be computed (gold text shorter
+    than 300 characters). ROUGE scoring failures are logged once and
+    do not abort the run.
     """
     global _ROUGE_ERROR_LOGGED
 
@@ -362,10 +354,7 @@ def _author_correct(extracted: Optional[str], reference: Optional[str]) -> bool:
     """
     Strict author comparison.
 
-    The previous substring rule (``reference[:15] in extracted``)
-    treated different names as a match: "Aleksandr Alekseev" matched
-    "Aleksandr Aleksandrov". Token-level comparison fixes that:
-
+    Token-level comparison:
       * two or more shared full tokens → match;
       * single token on both sides and equal → match;
       * otherwise → no match.
@@ -395,9 +384,8 @@ def _date_correct(extracted: Optional[str], reference: Optional[str]) -> bool:
     Compare two date strings by calendar day.
 
     ``ignoretz=True`` suppresses ``UnknownTimezoneWarning`` on tokens
-    that look like timezone names but are not (``IV`` appears on some
-    Tatar pages). Only the calendar day is compared, so the timezone
-    is lossless to ignore.
+    that look like timezone names but are not. Only the calendar day
+    is compared, so the timezone is lossless to ignore.
     """
     if not reference or not extracted:
         return False
@@ -419,12 +407,10 @@ def _title_correct(extracted: Optional[str], reference: Optional[str]) -> bool:
 
 
 _MONTH_NAMES = (
-    # Russian (any case)
     "январ", "феврал", "март", "апрел", "мая", "май", "июн", "июл",
     "август", "сентябр", "октябр", "ноябр", "декабр",
     "январь", "февраль", "апрель", "июнь", "июль",
     "август", "сентябрь", "октябрь", "ноябрь", "декабрь",
-    # English
     "january", "february", "march", "april", "may", "june", "july",
     "august", "september", "october", "november", "december",
     "jan", "feb", "mar", "apr", "jun", "jul", "aug", "sep", "oct", "nov", "dec",
@@ -443,16 +429,8 @@ _DATE_ONLY_RE = re.compile(
     re.I,
 )
 
-_CONTENT_LABEL_RE = re.compile(
-    r"^\s*(?:"
-    r"партн[её]рск(?:ий|ая|ое|ие)\s+материал"
-    r"|маводи\s+шарикона"
-    r"|спонсорск(?:ий|ая|ое|ие)\s+материал"
-    r"|рекламн(?:ый|ая|ое|ые)\s+материал"
-    r"|реклама|промо"
-    r"|advertorial|sponsored(?:\s+content|\s+post)?"
-    r"|partner\s+material|paid\s+post"
-    r")\s*$",
+_TECH_LOGIN_RE = re.compile(
+    r"^\s*(?:admin|administrator|webmaster|root|guest|anonymous|noreply|no-reply)\s*$",
     re.I,
 )
 
@@ -470,6 +448,7 @@ _CONTENT_LABEL_RE = re.compile(
     re.I,
 )
 
+
 def _looks_like_author_name(value: Optional[str]) -> bool:
     """
     Return True if ``value`` plausibly names a person.
@@ -479,17 +458,24 @@ def _looks_like_author_name(value: Optional[str]) -> bool:
 
       * reading times: "1 минута", "2 минуты", "5 минут чтения";
       * dates: "15.03.2024", "2024-03-15", "15 марта 2024";
+      * CMS logins: "admin", "administrator", "webmaster", "noreply";
       * relative days: "сегодня", "вчера", "позавчера";
       * URLs, e-mail addresses;
       * strings with no letters at all.
+
+    Editorial bylines ("Редакция", "Пресс-служба") pass this filter;
+    they are distinguished from personal names downstream by
+    ``tools/author_verification.py`` (verdict ``editorial``).
     """
     if not value:
         return False
     text = value.strip()
     if len(text) < 2 or len(text) > 120:
         return False
-    if _CONTENT_LABEL_RE.match(text):        
-        return False       
+    if _CONTENT_LABEL_RE.match(text):
+        return False
+    if _TECH_LOGIN_RE.match(text):
+        return False
     if _READING_TIME_RE.fullmatch(text):
         return False
     if _DATE_ONLY_RE.fullmatch(text):
@@ -620,9 +606,15 @@ def gather_from_config(
     articles_per_site: int,
     min_strategies: int,
     exclude: Optional[list[str]] = None,
+    sites_filter: Optional[list[str]] = None,
 ) -> list[dict[str, str]]:
-    """Select sites by language and collect article URLs from each."""
+    """Select sites by language and collect article URLs from each.
+
+    If ``sites_filter`` is provided, only those site keys are processed;
+    ``sites_per_lang`` is ignored.
+    """
     exclude_set = set(exclude or [])
+    sites_set = set(sites_filter) if sites_filter else None
     config = load_modular_config(engine.yaml_path)
     sites = config.get("sites", {})
 
@@ -632,19 +624,23 @@ def gather_from_config(
             continue
         if site_key in exclude_set:
             continue
+        if sites_set is not None and site_key not in sites_set:
+            continue
         lang = site_cfg.get("default_language")
         if lang not in langs:
             continue
         n_strategies = len(site_cfg.get("author_strategy", []) or [])
         if n_strategies < min_strategies:
             continue
-        if len(by_lang[lang]) >= sites_per_lang:
+        if sites_set is None and len(by_lang[lang]) >= sites_per_lang:
             continue
         by_lang[lang].append((site_key, site_cfg, n_strategies))
 
-    print("\n[PLAN] Sites to process by language:")
+    print("\n[PLAN] Sites to process:")
     if exclude_set:
         print(f"    (excluded: {', '.join(sorted(exclude_set))})")
+    if sites_set is not None:
+        print(f"    (explicit --sites: {', '.join(sorted(sites_set))})")
     for lang in sorted(by_lang):
         names = [key for key, _, _ in by_lang[lang]]
         print(f"    {lang}: {', '.join(names)}")
@@ -729,10 +725,6 @@ def probe_author(
     """
     Try each author strategy in the configured order and return the
     first value that passes ``_looks_like_author_name``.
-
-    Values such as "1 минута" and "15 марта 2024" are rejected here so
-    that the coverage and precision counts reflect real author names,
-    not selector noise.
     """
     strategies = (
         site_cfg.get("author_strategy")
@@ -743,8 +735,6 @@ def probe_author(
     real_strategies = [s for s in strategies if s != "default_fallback"]
 
     for strategy in real_strategies:
-        # Isolate one strategy at a time so the tracker attributes the
-        # hit to the correct entry.
         single_cfg = dict(site_cfg)
         single_cfg["author_strategy"] = [strategy]
         single_cfg["default_author"] = None
@@ -892,7 +882,6 @@ def probe_date(
 
     for selector in site_cfg.get("date_selectors", []):
         if "ld+json" in selector:
-            # Already covered by the JSON-LD pass above.
             continue
         start = time.perf_counter()
         try:
@@ -999,10 +988,8 @@ def probe_category(
                 return ProbeResult(strategy, value, elapsed_ms, None)
 
         elif strategy == "context_passed":
-            # Already handled by the caller.
             continue
 
-    # Final fallback: ``extract_category`` applies its own guards.
     start = time.perf_counter()
     try:
         category = engine.extract_category(soup, url, site_cfg)
@@ -1313,6 +1300,12 @@ def main(argv: Optional[list[str]] = None) -> int:
 
     parser.add_argument("--langs", nargs="+", default=["tg", "tt", "ba", "os"])
     parser.add_argument("--sites-per-lang", type=int, default=2)
+    parser.add_argument(
+        "--sites",
+        nargs="+",
+        default=None,
+        help="Explicit site keys (overrides --sites-per-lang)",
+    )
     parser.add_argument("--articles-per-site", type=int, default=20)
     parser.add_argument("--min-strategies", type=int, default=1)
     parser.add_argument("--exclude", nargs="*", default=["sssr", "ozodi"])
@@ -1344,9 +1337,13 @@ def main(argv: Optional[list[str]] = None) -> int:
             articles = articles[: args.limit]
         urls_to_process = articles
     else:
+        mode_desc = (
+            f"explicit sites={args.sites}"
+            if args.sites
+            else f"languages={args.langs}, {args.sites_per_lang} sites/language"
+        )
         print(
-            f"[MODE] Config mode: languages={args.langs}, "
-            f"{args.sites_per_lang} sites/language, "
+            f"[MODE] Config mode: {mode_desc}, "
             f"{args.articles_per_site} articles/site"
         )
         urls_to_process = gather_from_config(
@@ -1356,6 +1353,7 @@ def main(argv: Optional[list[str]] = None) -> int:
             articles_per_site=args.articles_per_site,
             min_strategies=args.min_strategies,
             exclude=args.exclude,
+            sites_filter=args.sites,
         )
 
     if not urls_to_process:
