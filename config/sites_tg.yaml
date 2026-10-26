@@ -1,5 +1,5 @@
 # ============================================================
-# TAJIK SITES — 10 news portals in Tajik language
+# TAJIK SITES
 # ============================================================
 
 sites:
@@ -137,213 +137,138 @@ sites:
       - "/a/"
     article_url_excludes: []
 
-  asiaplustj:
+  # ============================================================
+  # asiaplus.news — Asia-Plus, Tajik edition
+  # ============================================================
+  asiaplus:
     match: ["asiaplus.news"]
-    default_language: "tg"
+    default_language: tg
+    date_locale: "tg"
     start_url: "https://asiaplus.news/tg/hamai-ahbor/"
-    card_selectors:
-      - ".ap-card"
-    article_link_selectors:
-      - "a.ap-card__link"
-      - "a.ap-card__media"
-      - "h2.ap-card__title a"
-    article_url_filters:
-      - "/tg/2026/"
-      - "/tg/2025/"
-    article_url_excludes:
-      - "/category/"
-      - "/author/"
-      - "/homepage-"
-      - ".jpg"
-      - ".png"
+    verify_ssl: true
+
     title_selectors:
       - "h1.ap-single__title"
       - "meta[property='og:title']"
+
     date_selectors:
       - "meta[property='article:published_time']"
-      - "time[datetime]"
+      - "meta[property='og:updated_time']"
+      - "dl.ap-single__facts time[datetime]"
+
     author_selectors:
-      - ".ap-author__link"
-      - ".ap-single__author"
-    category_selectors:
-      - "dd.ap-single__terms a"
-      - "meta[property='article:section']"
+      - "a.ap-author__link"
+      - "meta[name='twitter:data1']"
+
     content_selectors:
       - "div.ap-content.entry-content"
-      - "article.ap-single"
-    remove_selectors:
-      - "script"
-      - "style"
-      - "noscript"
-      - ".ap-single__share"
-      - ".ap-follow-row"
-      - ".apblk-quote"
+
+    category_selectors:
+      - "meta[property='article:section']"
+
+    card_selectors:
+      - "div.ap-grid--2 article.ap-card"
+      - "div.ap-biggrid article.ap-card"
+      - "div.ap-archive__main article.ap-card"
+
+    article_link_selectors:
+      - "h2.ap-card__title a"
+      - "h3.ap-card__title a"
+
+    pagination_selectors:
+      - "nav.ap-arch-nav a.next"
+      - "link[rel='next']"
+
+    # article_url_regex requires pipeline_core to read this field.
+    # article_url_filters works on current code via substring match
+    # and is the effective filter until the regex path is wired.
+    article_url_regex: "^/tg/\\d{4}/\\d{2}/\\d{2}/[^/]+/?$"
+    article_url_filters:
+      - "/tg/2026/"
+      - "/tg/2025/"
+      - "/tg/2024/"
+      - "/tg/2023/"
+    article_url_excludes:
+      - "/category/"
+      - "/author/"
+      - "/tag/"
+      - "/page/"
+
+    category_strategy:
+      - meta_tag
+
+    author_strategy:
+      - class_selector
+      - meta_tag
+      - regex_in_content
 
   # ============================================================
   # khovar.tj — national information agency of Tajikistan
   # ============================================================
   khovar:
-    match:
-      - "khovar.tj"
-    default_language: "tg"
-    noise_language: ["common", "tg", "ru"]
-    start_url: "https://khovar.tj/"
-    rubric_strategy:
-      - "menu_scraping"
-      - "pattern_fallback"
-    author_strategy:
-      - "class_selector"
-      - "meta_tag"
-      - "json_ld_graph"
-      - "json_ld_simple"
-      - "regex_in_content"
-      - "default_fallback"
-    rubric_selectors:
-      - "div.main-menu ul.the-menu a[href*='/category/']"
-      - "ul.the-menu a[href*='/category/']"
-      - "a[href*='/category/']"
-    card_selectors:
-      - "div.article-big"
-      - "ul.article-block-big > li"
-      - "article"
-    article_link_selectors:
-      - "h2 a[href]"
-      - "h4 a[href]"
-      - ".article-content h4 a[href]"
-      - "a.hover-effect[href]"
-    pagination_selectors:
-      - "div.pagination a.next"
-      - "div.pagination a:contains('Саҳифаи оянда')"
-      - "a.next.page-numbers"
-      - "a.page-numbers"
-      - "a[href*='/page/']"
+    match: ["khovar.tj"]
+    default_language: tg
+    date_locale: "tg"
+    start_url: "https://khovar.tj"
+    verify_ssl: true
+
     title_selectors:
       - "div.article-title h1"
       - "h1"
-      - 'meta[property="og:title"]'
-      - "title"
+
     date_selectors:
+      - "meta[property='article:published_time']"
       - "div.author .a-content .meta"
+      - "div.author .meta"
       - "span.meta"
-      - 'meta[property="article:published_time"]'
-      - 'meta[name="pubdate"]'
-      - 'meta[itemprop="datePublished"]'
-      - "time[datetime]"
+
     author_selectors:
-      - 'p[style*="text-align: right"] strong'
-      - 'p[style*="text-align:right"] strong'
-      - 'meta[name="author"]'
-      - 'meta[property="article:author"]'
-      - ".article-author"
-      - ".author"
-    category_selectors:
-      - 'meta[property="article:section"]'
-      - "div.breadcrumb a"
-      - ".breadcrumb a"
-      - "a[href*='/category/']"
+      - "p[style*='text-align: right'] strong"
+      - "div.author strong"
+
     content_selectors:
-      - "div.shortcode-content"
       - "div.column9"
-      - ".block-content.post"
-      - "article"
-      - "main"
-    remove_selectors:
-      - "script"
-      - "style"
-      - "noscript"
-      - "iframe"
-      - ".share-block"
-      - ".heateorSssClear"
-      - ".heateor_sss_sharing_container"
-      - ".heateor_sss_sharing_ul"
-      - ".banner"
-      - ".advertisement"
-      - ".widget"
-    article_url_filters:
-      - "/20"
-    article_url_excludes:
-      - "/category/"
-      - "/tag/"
-      - "/author/"
-      - "/page/"
-      - "/feed/"
-      - "/wp-content/"
-      - ".jpg"
-      - ".png"
-      - ".pdf"
-      
-  # ============================================================
-  # oila.tj — family / lifestyle portal
-  # ============================================================
-  oila:
-    match:
-      - "oila.tj"
-      - "oila"
-    default_language: "tg"
-    noise_language: ["common", "tg"]
-    rubric_strategy:
-      - "menu_scraping"
-      - "pattern_fallback"
-    author_strategy:
-      - "meta_tag"
-      - "json_ld_graph"
-      - "regex_in_content"
-      - "default_fallback"
-    rubric_selectors:
-      - "ul.menu-desk a[href*='/category/']"
-      - "ul.menu-desk a[href]"
-      - "nav a[href]"
-      - "header a[href]"
-      - "a[href*='/news/']"
-      - "a[href*='/category/']"
-    card_selectors:
-      - "div.article"
-    article_link_selectors:
-      - "a.article__title"
-    pagination_selectors:
-      - "span.active"
-      - "a.pagination__number"
-      - "a.pagination__arrow--next:not(.disabled)"
-      - "a.pagination__arrow--next"
-      - "div.pagination a"
-      - "a.next"
-      - "a[rel='next']"
-      - "a[href*='/page/']"
-      - "a[href*='page=']"
-    title_selectors:
-      - "div.title--article"
-      - 'meta[property="og:title"]'
-      - "h1"
-      - "title"
-    date_selectors:
-      - "div.date-widget__time"
-      - 'meta[property="article:published_time"]'
-      - 'meta[itemprop="datePublished"]'
-      - "time[datetime]"
-    author_selectors:
-      - "a.date-widget__author"
-      - 'meta[name="author"]'
-      - 'meta[property="article:author"]'
+      - "div.shortcode-content"
+
     category_selectors:
-      - 'meta[property="article:section"]'
-      - ".breadcrumb a"
-    content_selectors:
-      - "article.page-article__wysiwyg"
-      - "div.entry-content"
+      - "meta[property='article:section']"
+
+    card_selectors:
+      - "div.article-big"
+      - "div.news-item"
       - "article"
-      - ".content"
-      - "main"
-    remove_selectors:
-      - ".banner"
-      - ".share"
-      - ".social"
-      - ".widget"
+
+    article_link_selectors:
+      - "h2 a"
+      - "h3 a"
+
+    pagination_selectors:
+      - "div.pagination a.next"
+      - "div.pagination a:contains('Саҳифаи оянда')"
+      - "a[rel='next']"
+
+    rubric_selectors:
+      - "div.main-menu ul.the-menu a[href*='/category/']"
+
+    article_url_regex: "^/\\d{4}/\\d{2}/[^/]+/?$"
     article_url_filters:
-      - "/news/"
+      - "/2026/"
+      - "/2025/"
+      - "/2024/"
+      - "/2023/"
     article_url_excludes:
-      - "/tag/"
       - "/category/"
+      - "/tag/"
       - "/page/"
+
+    category_strategy:
+      - meta_tag
+      - url_path_parsing
+
+    author_strategy:
+      - class_selector
+      - meta_tag
+      - regex_in_content
 
   # ============================================================
   # jumhuriyat.tj — government newspaper
@@ -351,7 +276,6 @@ sites:
   jumhuriyat:
     match:
       - "jumhuriyat.tj"
-      - "jumhuriyat"
     default_language: "tg"
     noise_language: ["common", "tg"]
     rubric_strategy:
@@ -545,7 +469,6 @@ sites:
   mit:
     match:
       - "mit.tj"
-      - "mit"
     default_language: "tg"
     noise_language: ["common", "tg"]
     rubric_strategy:
@@ -618,7 +541,6 @@ sites:
   mfa:
     match:
       - "mfa.tj"
-      - "www.mfa.tj"
     default_language: "tg"
     noise_language: ["common", "tg"]
     verify_ssl: false
@@ -665,7 +587,11 @@ sites:
     article_url_excludes: []
 
   # ============================================================
-  # president.tj — government newspaper
+  # president.tj — API-driven site.
+  # fixed_last_page is a static snapshot: president.tj news items
+  # published after the file was written land on page numbers above
+  # this value and are not fetched. Raise it periodically, or switch
+  # to last_page_detection.mode = auto to probe the API at runtime.
   # ============================================================
   president-tj:
     match:
@@ -879,3 +805,152 @@ sites:
       - "/tag/"
       - "/author/"
       - "/page/"
+      
+  # ============================================================
+  # vkd.tj — Ministry of Internal Affairs news portal
+  # Listing is section-scoped (Рӯйдодҳо). Other sections are reached
+  # through rubric discovery from the start_url.
+  # ============================================================
+  vkd:
+    match:
+      - "vkd.tj"
+    default_language: "tg"
+    noise_language: ["common", "tg"]
+    start_url: "https://www.vkd.tj/tj/ruydodho/"
+    verify_ssl: true
+
+    rubric_strategy:
+      - "menu_scraping"
+
+    author_strategy:
+      - "meta_tag"
+      - "json_ld_graph"
+      - "class_selector"
+      - "regex_in_content"
+
+    rubric_selectors:
+      - "nav a[href*='/tj/']"
+      - "header a[href*='/tj/']"
+
+    card_selectors:
+      - "div.news-item"
+
+    article_link_selectors:
+      - "a.side-item-link"
+      - "a[href$='.html']"
+
+    pagination_selectors:
+      - "div.pagination a"
+      - "a[href*='/page/']"
+      - "link[rel='next']"
+
+    title_selectors:
+      - "h1"
+      - "title"
+
+    date_selectors:
+      - ".full-meta .main-item-date"
+      - "meta[property='article:published_time']"
+      - "meta[name='pubdate']"
+      - "meta[itemprop='datePublished']"
+      - "time[datetime]"
+
+    author_selectors:
+      - "meta[name='Author']"
+      - "meta[name='author']"
+      - "meta[property='article:author']"
+
+    category_selectors:
+      - "meta[property='article:section']"
+
+    category_strategy:
+      - "meta_tag"
+      - "url_path_parsing"
+
+    content_selectors:
+      - "#full-text"
+      - "article.full"
+      - "article"
+
+    remove_selectors:
+      - ".share"
+      - ".social"
+      - ".banner"
+
+    article_url_filters:
+      - ".html"
+
+    article_url_excludes:
+      - "/page/"
+
+    date_locale: "tg"
+
+  # ============================================================
+  # khf.tj — Center for Strategic Research under the President
+  # Drupal site. Listing is /node?page=N. span.username contains the
+  # Drupal login "admin" on every page, not a personal byline, so it
+  # is omitted from author_selectors. meta[name="Author"] is rare;
+  # author extraction yields None on most pages.
+  # ============================================================
+  khf:
+    match:
+      - "khf.tj"
+    default_language: "tg"
+    noise_language: ["common", "tg"]
+    start_url: "https://www.khf.tj/node"
+    verify_ssl: true
+
+    rubric_strategy:
+      - "menu_scraping"
+
+    author_strategy:
+      - "meta_tag"
+      - "json_ld_graph"
+
+    rubric_selectors:
+      - "nav a[href*='/node']"
+      - "header a[href*='/node']"
+
+    card_selectors:
+      - "h2.title"
+
+    article_link_selectors:
+      - "h2.title a"
+
+    pagination_selectors:
+      - "li.pager-last a"
+      - "li.pager-next a"
+      - "a[href*='?page=']"
+
+    title_selectors:
+      - "h1.page-title"
+      - "title"
+
+    date_selectors:
+      - "span[property='dc:date dc:created']"
+      - "span.submitted"
+      - "meta[property='article:published_time']"
+
+    author_selectors:
+      - "meta[name='Author']"
+      - "meta[name='author']"
+      - "meta[property='article:author']"
+
+    category_selectors: []
+
+    category_strategy: []
+
+    content_selectors:
+      - "div[property='content:encoded']"
+      - "article"
+
+    remove_selectors:
+      - ".share"
+      - ".social"
+      - ".banner"
+
+    article_url_filters: []
+
+    article_url_excludes:
+      - "?page="
+      

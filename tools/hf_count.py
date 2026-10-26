@@ -1,56 +1,45 @@
 # tools/hf_count.py
 """
-Measure the size of every dataset published by the four organisations
-BashkirNLPWorld, TatarNLPWorld, OssetianNLPWorld, and TajikNLPWorld.
+Measure dataset sizes for BashkirNLPWorld, TatarNLPWorld,
+OssetianNLPWorld, and TajikNLPWorld.
 
-For each split of each dataset the script reports:
-  * number of documents
-  * number of characters
-  * number of tokens under xlm-roberta-base and facebook/mbart-large-50
+For every split the script reports:
+  * document count
+  * character count
+  * token counts under one or more tokenizers
 
-Aggregate summaries are printed per group and in total.
+Default tokenizers:
+  * xlm-roberta-base              (XLM-R, SentencePiece, ~250k vocab)
+  * google/gemma-3-270m           (Gemma 3, ~262k vocab)
+
+Gemma 3 is gated on Hugging Face. Accept the license at
+https://huggingface.co/google/gemma-3-270m and provide HF_TOKEN.
 
 Authentication
 --------------
-The Hugging Face token is read from the HF_TOKEN environment variable.
-Public datasets can be downloaded anonymously; gated datasets require
-a token.
+HF_TOKEN environment variable. Public datasets can be downloaded
+anonymously; gated datasets (Gemma 3, some corpora) require a token.
 
 Dataset loading
 ---------------
-Some repositories in TatarNLPWorld and OssetianNLPWorld carry a
-``dataset_info.json`` that disagrees with the underlying Parquet files.
-The shared ``_common.load_ds`` helper handles this transparently with
-two fallbacks (see its docstring).
+Some repositories carry a `dataset_info.json` that disagrees with the
+underlying Parquet shards. `load_dataset_with_fallback` handles this
+with two attempts:
+  1. standard `load_dataset(..., verification_mode="no_checks")`
+  2. direct Parquet loader via `load_dataset("parquet", ...)`
 
 Installation
 ------------
-    pip install datasets transformers tqdm
+    pip install "datasets>=5.0" "transformers>=4.50" tqdm
 
 Usage
 -----
-    # All groups, all primary splits (full / train / validation)
     python tools/hf_count.py
-
-    # Tajik datasets only
     python tools/hf_count.py --groups tajik
-
-    # Ossetian datasets only
-    python tools/hf_count.py --groups ossetian
-
-    # Include ``sample`` splits (skipped by default)
-    python tools/hf_count.py --include-samples
-
-    # Restrict to specific split names
-    python tools/hf_count.py --splits full train
-
-    # Stream without caching to disk
+    python tools/hf_count.py --tokenizers xlm-roberta-base google/gemma-3-270m
+    python tools/hf_count.py --gemma3-model google/gemma-3-1b-it
+    python tools/hf_count.py --no-gemma3
     python tools/hf_count.py --streaming
-
-Output
-------
-    hf_count.csv          one row per (dataset, split)
-    hf_count_summary.csv  aggregate per group and in total
 """
 from __future__ import annotations
 
@@ -59,16 +48,14 @@ import csv
 import logging
 import os
 from collections import defaultdict
+from typing import Iterable
 
-# Silence Hugging Face and transformers noise before those modules are imported.
 os.environ.setdefault("HF_HUB_DISABLE_SYMLINKS_WARNING", "1")
 logging.getLogger("transformers.tokenization_utils_base").setLevel(logging.ERROR)
 
+from datasets import load_dataset
 from transformers import AutoTokenizer
 from tqdm import tqdm
-
-from _common import get_token, load_ds
-
 
 # ============================================================
 # Dataset registry
@@ -118,53 +105,103 @@ GROUPS = {
     "tajik":    DATASETS_TAJIK,
 }
 
-# Text field priority; the first non-empty field is used for each example.
+# Text field priority; first non-empty field is used.
 TEXT_FIELDS = ["content", "text", "title"]
 
-# Number of examples passed to the tokenizer at once.
+# Batch size for tokenizer calls.
 TOKENIZE_BATCH = 256
+
+# Default tokenizer set.
+DEFAULT_TOKENIZERS = {
+    "xlm_r": "xlm-roberta-base",
+    "gemma3": "google/gemma-3-270m",
+}
 
 
 # ============================================================
 # Helpers
 # ============================================================
 
+def get_token() -> str | None:
+    for var in ("HF_TOKEN", "HUGGING_FACE_HUB_TOKEN", "HUGGINGFACE_TOKEN"):
+        value = os.environ.get(var)
+        if value:
+            return value.strip()
+    return None
+
+
+def load_dataset_with_fallback(repo: str, token: str | None, streaming: bool):
+    """
+    Load a dataset with two attempts.
+
+    1. Standard loader with verification_mode="no_checks".
+    2. Direct Parquet loader.
+    """
+    try:
+        return load_dataset(
+            repo,
+            token=token,
+            streaming=streaming,
+            verification_mode="no_checks",
+        )
+    except Exception as exc:
+        print(f"  [WARN] standard loader failed: {type(exc).__name__}: {exc}")
+        print("  [RETRY] parquet loader...")
+
+    return load_dataset(
+        "parquet",
+        data_files=f"hf://datasets/{repo}/data/*.parquet",
+        token=token,
+        streaming=streaming,
+    )
+
+
 def pick_text(example: dict) -> str:
-    """Return the first non-empty text field from a dataset example."""
+    """Return the first non-empty text field."""
     for field in TEXT_FIELDS:
-        v = example.get(field)
-        if isinstance(v, str) and v.strip():
-            return v
+        value = example.get(field)
+        if isinstance(value, str) and value.strip():
+            return value
     return ""
 
 
-def count_split(dataset, tokenizers, desc: str, batch_size: int = TOKENIZE_BATCH):
+def count_split(
+    dataset,
+    tokenizers: dict[str, AutoTokenizer],
+    desc: str,
+    batch_size: int = TOKENIZE_BATCH,
+) -> tuple[int, int, dict[str, int]]:
     """
-    Count documents, characters, and tokens over a single split.
+    Count documents, characters, and tokens for one split.
 
-    Tokenization is batched: web corpora are an order of magnitude
-    faster when the tokenizer receives several examples at once.
+    Tokenizer calls are batched. `return_length=True` returns the number
+    of tokens per example without materializing full input_ids when the
+    fast tokenizer supports it.
     """
     docs = 0
     chars = 0
     tokens = {name: 0 for name in tokenizers}
 
-    def flush(batch):
+    def flush(batch: list[str]) -> None:
         nonlocal docs, chars
         if not batch:
             return
         docs += len(batch)
-        chars += sum(len(t) for t in batch)
+        chars += sum(len(text) for text in batch)
         for name, tok in tokenizers.items():
-            enc = tok(batch, add_special_tokens=False)
-            tokens[name] += sum(len(ids) for ids in enc["input_ids"])
+            encoded = tok(
+                batch,
+                add_special_tokens=False,
+                return_length=True,
+            )
+            tokens[name] += sum(encoded["length"])
 
-    batch = []
-    for ex in tqdm(dataset, desc=desc, unit="doc", leave=False):
-        txt = pick_text(ex)
-        if not txt:
+    batch: list[str] = []
+    for example in tqdm(dataset, desc=desc, unit="doc", leave=False):
+        text = pick_text(example)
+        if not text:
             continue
-        batch.append(txt)
+        batch.append(text)
         if len(batch) >= batch_size:
             flush(batch)
             batch = []
@@ -173,83 +210,119 @@ def count_split(dataset, tokenizers, desc: str, batch_size: int = TOKENIZE_BATCH
     return docs, chars, tokens
 
 
-def iter_targets(args):
-    """Yield (group_name, repo_id, language, dataset_type) for each dataset to process."""
+def iter_targets(args) -> Iterable[tuple[str, str, str, str]]:
+    """Yield (group, repo, language, dataset_type)."""
     if args.datasets:
         for repo in args.datasets:
             yield ("custom", repo, "?", "?")
         return
-    for gname in args.groups:
-        for repo, lang, dtype in GROUPS[gname]:
-            yield (gname, repo, lang, dtype)
+    for group_name in args.groups:
+        for repo, lang, dtype in GROUPS[group_name]:
+            yield (group_name, repo, lang, dtype)
+
+
+def build_tokenizers(args) -> dict[str, AutoTokenizer]:
+    """
+    Build the tokenizer set.
+
+    If `--tokenizers` is given, use exactly those model names.
+    Otherwise use the default set, optionally skipping Gemma 3.
+    """
+    if args.tokenizers:
+        names = {name.replace("/", "_").replace("-", "_"): name for name in args.tokenizers}
+    else:
+        names = dict(DEFAULT_TOKENIZERS)
+        if args.no_gemma3:
+            names.pop("gemma3", None)
+        if args.gemma3_model:
+            names["gemma3"] = args.gemma3_model
+
+    tokenizers: dict[str, AutoTokenizer] = {}
+    for key, model_name in names.items():
+        print(f"  - {key:<12} {model_name}")
+        try:
+            tokenizers[key] = AutoTokenizer.from_pretrained(
+                model_name,
+                token=args.hf_token,
+            )
+        except Exception as exc:
+            print(f"    [SKIP] {type(exc).__name__}: {exc}")
+            if key == "gemma3":
+                print("    Gemma 3 is gated. Accept the license at")
+                print(f"    https://huggingface.co/{model_name}")
+    return tokenizers
 
 
 # ============================================================
 # Entry point
 # ============================================================
 
-def main():
-    ap = argparse.ArgumentParser()
+def main() -> None:
+    ap = argparse.ArgumentParser(
+        description="Count documents, characters, and tokens per dataset split."
+    )
     ap.add_argument("--groups", nargs="*", choices=list(GROUPS.keys()),
                     default=list(GROUPS.keys()))
     ap.add_argument("--datasets", nargs="*", default=None,
-                    help="Explicit list of repo_id values (overrides --groups)")
+                    help="Explicit repo IDs (overrides --groups)")
     ap.add_argument("--splits", nargs="*", default=None,
                     help="Restrict to these split names")
     ap.add_argument("--include-samples", action="store_true",
                     help="Include sample splits (skipped by default)")
+    ap.add_argument("--tokenizers", nargs="*", default=None,
+                    help="Explicit tokenizer model names (overrides defaults)")
+    ap.add_argument("--gemma3-model", default=None,
+                    help="Gemma 3 checkpoint (default: google/gemma-3-270m)")
+    ap.add_argument("--no-gemma3", action="store_true",
+                    help="Disable Gemma 3 tokenizer")
     ap.add_argument("--out", default="hf_count.csv")
     ap.add_argument("--out-summary", default="hf_count_summary.csv")
     ap.add_argument("--streaming", action="store_true")
     args = ap.parse_args()
 
-    token = get_token()
-    if token:
-        print(f"[AUTH] HF_TOKEN: {token[:7]}... (len={len(token)})")
+    args.hf_token = get_token()
+    if args.hf_token:
+        print(f"[AUTH] HF_TOKEN: {args.hf_token[:7]}... (len={len(args.hf_token)})")
     else:
-        print("[AUTH] HF_TOKEN not set; public datasets will be downloaded anonymously.")
+        print("[AUTH] HF_TOKEN not set; gated models will be skipped.")
 
     print("\n[LOAD] Tokenizers...")
-    tokenizers = {}
-    for name, hf in (("xlm_r", "xlm-roberta-base"),
-                     ("mbart", "facebook/mbart-large-50")):
-        print(f"  - {name:<6} {hf}")
-        tokenizers[name] = AutoTokenizer.from_pretrained(hf)
+    tokenizers = build_tokenizers(args)
+    if not tokenizers:
+        print("[ERROR] No tokenizer loaded. Aborting.")
+        return
     print()
 
     if args.streaming:
-        print("[MODE] STREAMING — no on-disk caching.\n")
+        print("[MODE] streaming=True — no on-disk cache.\n")
 
-    # Groups to print in the summary even if every dataset fails.
     requested_groups = ["custom"] if args.datasets else list(args.groups)
 
-    rows = []
-    group_totals = defaultdict(lambda: {
-        "docs": 0, "chars": 0,
-        "tokens_xlm_r": 0, "tokens_mbart": 0,
-        "datasets": 0,
-    })
+    rows: list[dict] = []
+    group_totals: dict[str, dict] = defaultdict(
+        lambda: {"docs": 0, "chars": 0, "datasets": 0, **{k: 0 for k in tokenizers}}
+    )
 
     current_group = None
     for group_name, repo, lang, dtype in iter_targets(args):
         if group_name != current_group:
             current_group = group_name
-            print(f"\n{'='*78}")
+            print(f"\n{'=' * 78}")
             print(f"GROUP: {group_name.upper()}")
-            print(f"{'='*78}")
+            print(f"{'=' * 78}")
 
         print(f"\n[DATASET] {repo}  ({lang}, {dtype})")
 
         try:
-            ds = load_ds(repo, token, args.streaming)
-        except Exception as e:
-            print(f"  [ERROR] {e}")
+            ds = load_dataset_with_fallback(repo, args.hf_token, args.streaming)
+        except Exception as exc:
+            print(f"  [ERROR] {exc}")
             rows.append({
                 "group": group_name, "lang": lang, "type": dtype,
                 "dataset": repo, "split": "", "docs": 0, "chars": 0,
-                "tokens_xlm_r": 0, "tokens_mbart": 0,
-                "tokens_xlm_r_per_doc": 0.0, "tokens_mbart_per_doc": 0.0,
-                "error": str(e)[:200],
+                **{f"tokens_{k}": 0 for k in tokenizers},
+                **{f"tokens_{k}_per_doc": 0.0 for k in tokenizers},
+                "error": str(exc)[:200],
             })
             continue
 
@@ -266,15 +339,15 @@ def main():
                 docs, chars, tokens = count_split(
                     split_ds, tokenizers, f"{repo} [{split_name}]"
                 )
-            except Exception as e:
-                print(f"  [ERROR] split={split_name}: {e}")
+            except Exception as exc:
+                print(f"  [ERROR] split={split_name}: {exc}")
                 rows.append({
                     "group": group_name, "lang": lang, "type": dtype,
                     "dataset": repo, "split": split_name,
                     "docs": 0, "chars": 0,
-                    "tokens_xlm_r": 0, "tokens_mbart": 0,
-                    "tokens_xlm_r_per_doc": 0.0, "tokens_mbart_per_doc": 0.0,
-                    "error": f"split error: {str(e)[:180]}",
+                    **{f"tokens_{k}": 0 for k in tokenizers},
+                    **{f"tokens_{k}_per_doc": 0.0 for k in tokenizers},
+                    "error": f"split error: {str(exc)[:180]}",
                 })
                 continue
 
@@ -282,82 +355,90 @@ def main():
                 print(f"  split={split_name:<11} docs=0 (empty)")
                 continue
 
-            tpd_x = tokens["xlm_r"] / docs
-            tpd_m = tokens["mbart"] / docs
-
-            print(f"  split={split_name:<11} "
-                  f"docs={docs:>10,}  "
-                  f"chars={chars:>13,}  "
-                  f"xlm-r={tokens['xlm_r']:>14,} ({tpd_x:>6.0f}/doc)  "
-                  f"mbart={tokens['mbart']:>14,} ({tpd_m:>6.0f}/doc)")
-
-            rows.append({
+            per_doc = {k: tokens[k] / docs for k in tokenizers}
+            row = {
                 "group": group_name, "lang": lang, "type": dtype,
                 "dataset": repo, "split": split_name,
                 "docs": docs, "chars": chars,
-                "tokens_xlm_r": tokens["xlm_r"],
-                "tokens_mbart": tokens["mbart"],
-                "tokens_xlm_r_per_doc": round(tpd_x, 1),
-                "tokens_mbart_per_doc": round(tpd_m, 1),
+                **{f"tokens_{k}": tokens[k] for k in tokenizers},
+                **{f"tokens_{k}_per_doc": round(per_doc[k], 1) for k in tokenizers},
                 "error": "",
-            })
+            }
+            rows.append(row)
 
-            g = group_totals[group_name]
-            g["docs"] += docs
-            g["chars"] += chars
-            g["tokens_xlm_r"] += tokens["xlm_r"]
-            g["tokens_mbart"] += tokens["mbart"]
-            g["datasets"] += 1
+            print(f"  split={split_name:<11} docs={docs:>10,}  chars={chars:>13,}")
+            for key in tokenizers:
+                print(f"    {key:<12} {tokens[key]:>14,}  ({per_doc[key]:>6.0f}/doc)")
 
-    # --- Summary by group ---
-    print(f"\n\n{'='*78}")
+            total = group_totals[group_name]
+            total["docs"] += docs
+            total["chars"] += chars
+            for key in tokenizers:
+                total[key] += tokens[key]
+            total["datasets"] += 1
+
+    # ---- Summary by group ----
+    print(f"\n\n{'=' * 78}")
     print("SUMMARY BY GROUP")
-    print(f"{'='*78}")
-    print(f"{'Group':<12} {'Datasets':>10} {'Documents':>14} "
-          f"{'Characters':>16} {'xlm-r tokens':>16} {'mBART tokens':>16}")
-    print("-" * 92)
+    print(f"{'=' * 78}")
 
-    empty = {"datasets": 0, "docs": 0, "chars": 0,
-             "tokens_xlm_r": 0, "tokens_mbart": 0}
+    header = f"{'Group':<12} {'Datasets':>10} {'Documents':>14} {'Characters':>16}"
+    for key in tokenizers:
+        header += f" {key + ' tokens':>16}"
+    print(header)
+    print("-" * (70 + 17 * len(tokenizers)))
 
-    grand_docs = grand_chars = grand_x = grand_m = 0
-    for gname in requested_groups:
-        g = group_totals.get(gname) or empty
-        print(f"{gname:<12} {g['datasets']:>10} {g['docs']:>14,} "
-              f"{g['chars']:>16,} {g['tokens_xlm_r']:>16,} {g['tokens_mbart']:>16,}")
-        grand_docs  += g["docs"]
-        grand_chars += g["chars"]
-        grand_x     += g["tokens_xlm_r"]
-        grand_m     += g["tokens_mbart"]
+    empty = {"datasets": 0, "docs": 0, "chars": 0, **{k: 0 for k in tokenizers}}
+    grand = {"docs": 0, "chars": 0, "datasets": 0, **{k: 0 for k in tokenizers}}
 
-    print("-" * 92)
-    print(f"{'TOTAL':<12} {'':>10} {grand_docs:>14,} "
-          f"{grand_chars:>16,} {grand_x:>16,} {grand_m:>16,}")
+    for name in requested_groups:
+        data = group_totals.get(name) or empty
+        line = (f"{name:<12} {data['datasets']:>10} {data['docs']:>14,} "
+                f"{data['chars']:>16,}")
+        for key in tokenizers:
+            line += f" {data[key]:>16,}"
+        print(line)
+        for field in ("docs", "chars", "datasets"):
+            grand[field] += data[field]
+        for key in tokenizers:
+            grand[key] += data[key]
 
-    # --- Per-row CSV ---
-    fields = ["group", "lang", "type", "dataset", "split",
-              "docs", "chars", "tokens_xlm_r", "tokens_mbart",
-              "tokens_xlm_r_per_doc", "tokens_mbart_per_doc", "error"]
+    print("-" * (70 + 17 * len(tokenizers)))
+    line = (f"{'TOTAL':<12} {'':>10} {grand['docs']:>14,} "
+            f"{grand['chars']:>16,}")
+    for key in tokenizers:
+        line += f" {grand[key]:>16,}"
+    print(line)
+
+    # ---- Per-row CSV ----
+    fields = ["group", "lang", "type", "dataset", "split", "docs", "chars"]
+    fields += [f"tokens_{k}" for k in tokenizers]
+    fields += [f"tokens_{k}_per_doc" for k in tokenizers]
+    fields += ["error"]
+
     with open(args.out, "w", encoding="utf-8", newline="") as f:
-        w = csv.DictWriter(f, fieldnames=fields)
-        w.writeheader()
-        w.writerows(rows)
+        writer = csv.DictWriter(f, fieldnames=fields)
+        writer.writeheader()
+        writer.writerows(rows)
     print(f"\n[OK] Per-row CSV:    {args.out}  (rows: {len(rows)})")
 
-    # --- Summary CSV ---
+    # ---- Summary CSV ----
     with open(args.out_summary, "w", encoding="utf-8", newline="") as f:
-        w = csv.writer(f)
-        w.writerow(["group", "datasets", "docs", "chars",
-                    "tokens_xlm_r", "tokens_mbart"])
-        for gname in requested_groups:
-            g = group_totals.get(gname) or empty
-            w.writerow([gname, g["datasets"], g["docs"], g["chars"],
-                        g["tokens_xlm_r"], g["tokens_mbart"]])
-        w.writerow(["TOTAL", sum((group_totals.get(g) or empty)["datasets"]
-                                 for g in requested_groups),
-                    grand_docs, grand_chars, grand_x, grand_m])
+        writer = csv.writer(f)
+        writer.writerow(["group", "datasets", "docs", "chars"]
+                        + [f"tokens_{k}" for k in tokenizers])
+        for name in requested_groups:
+            data = group_totals.get(name) or empty
+            writer.writerow([name, data["datasets"], data["docs"], data["chars"]]
+                            + [data[k] for k in tokenizers])
+        writer.writerow(["TOTAL",
+                         sum((group_totals.get(g) or empty)["datasets"]
+                             for g in requested_groups),
+                         grand["docs"], grand["chars"]]
+                        + [grand[k] for k in tokenizers])
     print(f"[OK] Summary by group: {args.out_summary}")
 
 
 if __name__ == "__main__":
     main()
+    

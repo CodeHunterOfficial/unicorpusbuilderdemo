@@ -489,9 +489,7 @@ def _looks_like_author_name(value: Optional[str]) -> bool:
     if len(text) < 2 or len(text) > 120:
         return False
     if _CONTENT_LABEL_RE.match(text):        
-        return False    
-    if _CONTENT_LABEL_RE.match(text):         
-            return False      
+        return False       
     if _READING_TIME_RE.fullmatch(text):
         return False
     if _DATE_ONLY_RE.fullmatch(text):

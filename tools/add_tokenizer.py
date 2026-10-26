@@ -1,64 +1,69 @@
 # tools/add_tokenizer.py
 """
-Add a second tokenizer column to an existing hf_count.csv.
+Add one extra tokenizer column to an existing hf_count.csv.
 
-Reads the CSV produced by ``tools/hf_count.py``, and for every row with
-``docs > 0`` loads the dataset from cache and counts tokens under a
-second tokenizer. The existing xlm-r column is NOT recalculated.
+Reads a CSV produced by tools/hf_count.py, and for every row with
+docs > 0, loads the dataset from the Hugging Face cache and counts
+tokens under one additional tokenizer. Columns already present in the
+input CSV are preserved unchanged.
 
-Which tokenizer is added
-------------------------
-    google-bert/bert-base-multilingual-cased
+Default tokenizer
+-----------------
+    google-bert/bert-base-multilingual-cased   (mBERT)
 
-mBERT differs from XLM-R in tokenization scheme and vocabulary size:
+mBERT uses WordPiece with ~120k vocabulary, whereas XLM-R uses
+SentencePiece with ~250k. The same text yields noticeably different
+token counts, so both are reported side by side.
 
-    XLM-R   SentencePiece, ~250k tokens
-    mBERT   WordPiece,     ~120k tokens
-
-This matters for corpus size estimates: the same text yields noticeably
-different token counts under the two tokenizers.
+Gemma 3 is also supported via ``--tokenizer google/gemma-3-270m``,
+matching the default tokenizer set in hf_count.py.
 
 Retry list
 ----------
-A small set of datasets (mostly in OssetianNLPWorld, plus
-``tatar-news-cluster``) failed in an earlier run and are loaded again
-here, with both tokenizers counted from scratch. Their rows are appended
-to the output CSV.
+A small set of datasets failed in an earlier run and are re-counted
+from scratch here. Their rows are appended to the output CSV.
 
 Usage
 -----
     python tools/add_tokenizer.py --input hf_count.csv --out hf_count_v2.csv
+    python tools/add_tokenizer.py --tokenizer google/gemma-3-270m
+    python tools/add_tokenizer.py --tokenizer google-bert/bert-base-multilingual-cased --streaming
 """
 from __future__ import annotations
 
 import argparse
 import csv
+import logging
+import os
 from collections import defaultdict
+from typing import Any
 
+os.environ.setdefault("HF_HUB_DISABLE_SYMLINKS_WARNING", "1")
+logging.getLogger("transformers.tokenization_utils_base").setLevel(logging.ERROR)
+
+from datasets import load_dataset
 from transformers import AutoTokenizer
 from tqdm import tqdm
 
-from _common import get_token, load_ds
 
+# ============================================================
+# Configuration
+# ============================================================
 
-# Tokenizer to add, and the key used in the output column names.
-NEW_TOKENIZER_NAME = "google-bert/bert-base-multilingual-cased"
-NEW_TOKENIZER_KEY = "mbert"
+DEFAULT_TOKENIZER = "google-bert/bert-base-multilingual-cased"
 
-# Text field priority; matches hf_count.py so that token counts are
-# comparable between the two scripts.
+# Text field priority; matches hf_count.py so token counts are comparable.
 TEXT_FIELDS = ["content", "text", "title"]
 
-# Datasets that failed in an earlier run. Values are
-# (language, dataset_type, forced_split_or_None).
-# A ``forced_split`` of None means "process every non-sample split".
+# Datasets that failed in an earlier run.
+# repo_id -> (group, lang, type, forced_split_or_None)
 RETRY_DATASETS = {
-    "OssetianNLPWorld/ossetian-web-corpus":         ("os", "web",        None),
-    "OssetianNLPWorld/ossetian-news-cluster":       ("os", "cluster",    None),
-    "OssetianNLPWorld/ossetian-news-multilabel":    ("os", "multilabel", None),
-    "OssetianNLPWorld/ossetian-news-binary":        ("os", "binary",     None),
-    "OssetianNLPWorld/ossetian-news-multiclass":    ("os", "multiclass", None),
-    "TatarNLPWorld/tatar-news-cluster":             ("tt", "cluster",    "train"),
+    "OssetianNLPWorld/ossetian-web-corpus":      ("ossetian", "os", "web",        None),
+    "OssetianNLPWorld/ossetian-news-cluster":    ("ossetian", "os", "cluster",    None),
+    "OssetianNLPWorld/ossetian-news-multilabel": ("ossetian", "os", "multilabel", None),
+    "OssetianNLPWorld/ossetian-news-binary":     ("ossetian", "os", "binary",     None),
+    "OssetianNLPWorld/ossetian-news-multiclass": ("ossetian", "os", "multiclass", None),
+    "TatarNLPWorld/tatar-news-cluster":          ("tatar",    "tt", "cluster",    "train"),
 }
 
 
@@ -66,43 +71,152 @@ RETRY_DATASETS = {
 # Helpers
 # ============================================================
 
+def get_token() -> str | None:
+    """Return the Hugging Face token from the environment, if present."""
+    for var in ("HF_TOKEN", "HUGGING_FACE_HUB_TOKEN", "HUGGINGFACE_TOKEN"):
+        value = os.environ.get(var)
+        if value:
+            return value.strip()
+    return None
+
+
+def load_dataset_with_fallback(repo: str, token: str | None, streaming: bool):
+    """
+    Load a dataset with two attempts.
+
+    1. Standard loader with verification_mode="no_checks".
+    2. Direct Parquet loader.
+    """
+    try:
+        return load_dataset(
+            repo,
+            token=token,
+            streaming=streaming,
+            verification_mode="no_checks",
+        )
+    except Exception as exc:
+        print(f"  [WARN] standard loader failed: {type(exc).__name__}: {exc}")
+        print("  [RETRY] parquet loader...")
+
+    return load_dataset(
+        "parquet",
+        data_files=f"hf://datasets/{repo}/data/*.parquet",
+        token=token,
+        streaming=streaming,
+    )
+
+
 def pick_text(example: dict) -> str:
-    """Return the first non-empty text field from a dataset example."""
+    """Return the first non-empty text field."""
     for field in TEXT_FIELDS:
-        v = example.get(field)
-        if isinstance(v, str) and v.strip():
-            return v
+        value = example.get(field)
+        if isinstance(value, str) and value.strip():
+            return value
     return ""
 
 
-def count_only_new_tokenizer(dataset, tokenizer, desc: str) -> int:
-    """
-    Count tokens under the new tokenizer only.
+def key_for_model(model_name: str) -> str:
+    """Derive a stable CSV column key from a tokenizer model name."""
+    return model_name.replace("/", "_").replace("-", "_")
 
-    Documents and character counts are already present in the input CSV,
-    so this function returns just the token total.
+
+def count_tokens(
+    dataset,
+    tokenizer: AutoTokenizer,
+    desc: str,
+    batch_size: int = 256,
+) -> int:
     """
-    tokens = 0
-    for ex in tqdm(dataset, desc=desc, unit="doc", leave=False):
-        txt = pick_text(ex)
-        if not txt:
+    Count tokens under one tokenizer.
+
+    Documents and character counts are already in the input CSV, so only
+    the token total is returned. Tokenization is batched and uses
+    return_length=True to avoid materializing input_ids.
+    """
+    total = 0
+    batch: list[str] = []
+
+    def flush() -> None:
+        nonlocal total
+        if not batch:
+            return
+        encoded = tokenizer(
+            batch,
+            add_special_tokens=False,
+            return_length=True,
+        )
+        total += sum(encoded["length"])
+
+    for example in tqdm(dataset, desc=desc, unit="doc", leave=False):
+        text = pick_text(example)
+        if not text:
             continue
-        tokens += len(tokenizer.encode(txt, add_special_tokens=False))
-    return tokens
+        batch.append(text)
+        if len(batch) >= batch_size:
+            flush()
+            batch = []
+    flush()
+
+    return total
+
+
+def count_both(
+    dataset,
+    tokenizers: dict[str, AutoTokenizer],
+    desc: str,
+    batch_size: int = 256,
+) -> tuple[int, int, dict[str, int]]:
+    """
+    Count documents, characters, and tokens for one split.
+
+    Used only for retry datasets, where the input CSV has no prior row.
+    """
+    docs = 0
+    chars = 0
+    tokens = {name: 0 for name in tokenizers}
+    batch: list[str] = []
+
+    def flush() -> None:
+        nonlocal docs, chars
+        if not batch:
+            return
+        docs += len(batch)
+        chars += sum(len(text) for text in batch)
+        for name, tok in tokenizers.items():
+            encoded = tok(batch, add_special_tokens=False, return_length=True)
+            tokens[name] += sum(encoded["length"])
+
+    for example in tqdm(dataset, desc=desc, unit="doc", leave=False):
+        text = pick_text(example)
+        if not text:
+            continue
+        batch.append(text)
+        if len(batch) >= batch_size:
+            flush()
+            batch = []
+    flush()
+
+    return docs, chars, tokens
 
 
 # ============================================================
 # Entry point
 # ============================================================
 
-def main():
-    ap = argparse.ArgumentParser()
+def main() -> None:
+    ap = argparse.ArgumentParser(
+        description="Add one tokenizer column to an existing hf_count.csv."
+    )
     ap.add_argument("--input", default="hf_count.csv",
-                    help="Existing CSV produced by hf_count.py")
+                    help="CSV produced by hf_count.py")
     ap.add_argument("--out", default="hf_count_v2.csv",
-                    help="New CSV with the extra tokenizer columns")
+                    help="Output CSV with the extra tokenizer columns")
+    ap.add_argument("--tokenizer", default=DEFAULT_TOKENIZER,
+                    help=f"Tokenizer model name to add (default: {DEFAULT_TOKENIZER})")
     ap.add_argument("--streaming", action="store_true",
-                    help="Streaming mode (needed for some datasets)")
+                    help="Use streaming mode (needed for some datasets)")
+    ap.add_argument("--skip-retry", action="store_true",
+                    help="Do not reprocess the hard-coded retry list")
     args = ap.parse_args()
 
     token = get_token()
@@ -111,168 +225,204 @@ def main():
     else:
         print("[AUTH] HF_TOKEN not set; public datasets will be downloaded anonymously.")
 
-    print(f"\n[LOAD] New tokenizer: {NEW_TOKENIZER_NAME}")
-    tokenizer = AutoTokenizer.from_pretrained(NEW_TOKENIZER_NAME)
+    new_key = key_for_model(args.tokenizer)
+    print(f"\n[LOAD] Adding tokenizer: {args.tokenizer}  (column key: {new_key})")
+    new_tokenizer = AutoTokenizer.from_pretrained(args.tokenizer, token=token)
     print()
 
-    # --- Read the existing CSV ---
-    rows = []
-    with open(args.input, "r", encoding="utf-8") as f:
+    # ---- Read the existing CSV ----
+    with open(args.input, "r", encoding="utf-8", newline="") as f:
         reader = csv.DictReader(f)
-        for r in reader:
-            rows.append(r)
+        fieldnames = list(reader.fieldnames or [])
+        rows = list(reader)
     print(f"[READ] Rows loaded: {len(rows)}")
 
-    # --- Count the new tokenizer for every row with docs > 0 ---
-    out_rows = []
+    # Detect the existing token keys so retry rows can be filled consistently.
+    existing_token_keys: list[str] = []
+    for name in fieldnames:
+        if name.startswith("tokens_") and not name.endswith("_per_doc"):
+            existing_token_keys.append(name[len("tokens_"):])
+    print(f"[INFO] Existing token columns: {', '.join(existing_token_keys) or '(none)'}")
+
+    # ---- Add the new tokenizer column to every row with docs > 0 ----
+    out_rows: list[dict[str, Any]] = []
     for r in rows:
         docs = int(r.get("docs", 0) or 0)
         repo = r.get("dataset", "")
         split = r.get("split", "")
 
-        # Rows with docs == 0 are copied through unchanged.
-        if docs == 0:
-            new_tokens = 0
-        else:
-            print(f"\n[TOKENS] {repo} [{split}] (docs={docs:,})")
+        new_tokens = 0
+        if docs > 0:
+            print(f"\n[TOKENS] {repo} [{split}]  (docs={docs:,})")
             try:
-                ds = load_ds(repo, token, args.streaming)
-            except Exception as e:
-                print(f"  [ERROR] {e}")
-                new_tokens = 0
+                ds = load_dataset_with_fallback(repo, token, args.streaming)
+            except Exception as exc:
+                print(f"  [ERROR] {exc}")
             else:
                 if split in ds:
                     try:
-                        new_tokens = count_only_new_tokenizer(
-                            ds[split], tokenizer, f"{repo} [{split}]"
+                        new_tokens = count_tokens(
+                            ds[split], new_tokenizer, f"{repo} [{split}]"
                         )
-                    except Exception as e:
-                        print(f"  [ERROR] split={split}: {e}")
-                        new_tokens = 0
+                    except Exception as exc:
+                        print(f"  [ERROR] split={split}: {exc}")
                 else:
                     print(f"  [SKIP] split={split} not present in the dataset")
-                    new_tokens = 0
 
-        nr = dict(r)
-        nr[f"tokens_{NEW_TOKENIZER_KEY}"] = new_tokens
-        nr[f"tokens_{NEW_TOKENIZER_KEY}_per_doc"] = (
+        row = dict(r)
+        row[f"tokens_{new_key}"] = new_tokens
+        row[f"tokens_{new_key}_per_doc"] = (
             round(new_tokens / docs, 1) if docs else 0.0
         )
-        out_rows.append(nr)
+        # Drop the legacy column if present; it is no longer produced by hf_count.py.
+        row.pop("tokens_mbart", None)
+        row.pop("tokens_mbart_per_doc", None)
+        out_rows.append(row)
 
-    # --- Retry the previously failed datasets ---
-    print(f"\n{'='*78}")
-    print(f"[RETRY] Datasets to reprocess: {len(RETRY_DATASETS)}")
-    print(f"{'='*78}")
+    # ---- Retry the previously failed datasets ----
+    if not args.skip_retry and RETRY_DATASETS:
+        print(f"\n{'=' * 78}")
+        print(f"[RETRY] Datasets to reprocess: {len(RETRY_DATASETS)}")
+        print(f"{'=' * 78}")
 
-    for repo, (lang, dtype, forced_split) in RETRY_DATASETS.items():
-        print(f"\n[DATASET] {repo}  ({lang}, {dtype})")
-        try:
-            ds = load_ds(repo, token, args.streaming)
-        except Exception as e:
-            print(f"  [ERROR] {e}")
-            continue
+        # Build tokenizer set: existing keys + the new one.
+        retry_tokenizers: dict[str, AutoTokenizer] = {}
+        for key in existing_token_keys:
+            model_name = key.replace("_", "/", 1) if key.startswith("xlm") else key
+            # Best-effort mapping; unknown keys are skipped.
+            candidates = {
+                "xlm_r": "xlm-roberta-base",
+                "gemma3": "google/gemma-3-270m",
+                "mbert": "google-bert/bert-base-multilingual-cased",
+            }
+            if key in candidates:
+                try:
+                    retry_tokenizers[key] = AutoTokenizer.from_pretrained(
+                        candidates[key], token=token
+                    )
+                except Exception as exc:
+                    print(f"  [WARN] Could not load {candidates[key]}: {exc}")
+        retry_tokenizers[new_key] = new_tokenizer
 
-        for split_name, split_ds in ds.items():
-            if forced_split and split_name != forced_split:
-                continue
-            if not forced_split and split_name == "sample":
-                continue
-
+        for repo, (group, lang, dtype, forced_split) in RETRY_DATASETS.items():
+            print(f"\n[DATASET] {repo}  ({lang}, {dtype})")
             try:
-                # Count both tokenizers from scratch for these rows.
-                xlm_tok = AutoTokenizer.from_pretrained("xlm-roberta-base")
-                mbert_tok = tokenizer
+                ds = load_dataset_with_fallback(repo, token, args.streaming)
+            except Exception as exc:
+                print(f"  [ERROR] {exc}")
+                continue
 
-                docs = 0
-                chars = 0
-                x_tokens = 0
-                m_tokens = 0
+            for split_name, split_ds in ds.items():
+                if forced_split and split_name != forced_split:
+                    continue
+                if not forced_split and split_name == "sample":
+                    continue
 
-                for ex in tqdm(split_ds, desc=f"{repo} [{split_name}]",
-                               unit="doc", leave=False):
-                    txt = pick_text(ex)
-                    if not txt:
-                        continue
-                    docs += 1
-                    chars += len(txt)
-                    x_tokens += len(xlm_tok.encode(txt, add_special_tokens=False))
-                    m_tokens += len(mbert_tok.encode(txt, add_special_tokens=False))
+                try:
+                    docs, chars, token_counts = count_both(
+                        split_ds,
+                        retry_tokenizers,
+                        f"{repo} [{split_name}]",
+                    )
+                except Exception as exc:
+                    print(f"  [ERROR] split={split_name}: {exc}")
+                    continue
 
                 if docs == 0:
                     print(f"  split={split_name:<11} docs=0 (empty)")
                     continue
 
-                print(f"  split={split_name:<11} docs={docs:>10,} "
-                      f"xlm-r={x_tokens:>14,}  mbert={m_tokens:>14,}")
+                print(f"  split={split_name:<11} docs={docs:>10,}  chars={chars:>13,}")
+                for key in retry_tokenizers:
+                    print(f"    {key:<12} {token_counts[key]:>14,}")
 
-                out_rows.append({
-                    "group": "ossetian" if lang == "os" else "tatar",
-                    "lang": lang, "type": dtype,
-                    "dataset": repo, "split": split_name,
-                    "docs": docs, "chars": chars,
-                    "tokens_xlm_r": x_tokens,
-                    "tokens_mbart": 0,  # legacy column, kept at 0
-                    "tokens_xlm_r_per_doc": round(x_tokens / docs, 1),
-                    "tokens_mbart_per_doc": 0.0,
-                    f"tokens_{NEW_TOKENIZER_KEY}": m_tokens,
-                    f"tokens_{NEW_TOKENIZER_KEY}_per_doc": round(m_tokens / docs, 1),
+                row: dict[str, Any] = {
+                    "group": group,
+                    "lang": lang,
+                    "type": dtype,
+                    "dataset": repo,
+                    "split": split_name,
+                    "docs": docs,
+                    "chars": chars,
                     "error": "",
-                })
-            except Exception as e:
-                print(f"  [ERROR] split={split_name}: {e}")
-                continue
+                }
+                for key, value in token_counts.items():
+                    row[f"tokens_{key}"] = value
+                    row[f"tokens_{key}_per_doc"] = round(value / docs, 1)
+                out_rows.append(row)
 
-    # --- Write the new CSV ---
-    base_fields = ["group", "lang", "type", "dataset", "split",
-                   "docs", "chars",
-                   "tokens_xlm_r", f"tokens_{NEW_TOKENIZER_KEY}",
-                   "tokens_xlm_r_per_doc", f"tokens_{NEW_TOKENIZER_KEY}_per_doc",
-                   "error"]
+    # ---- Write the new CSV ----
+    base_fields = ["group", "lang", "type", "dataset", "split", "docs", "chars"]
+    for key in existing_token_keys:
+        if key != new_key:
+            base_fields.append(f"tokens_{key}")
+            base_fields.append(f"tokens_{key}_per_doc")
+    base_fields.append(f"tokens_{new_key}")
+    base_fields.append(f"tokens_{new_key}_per_doc")
+    base_fields.append("error")
 
     with open(args.out, "w", encoding="utf-8", newline="") as f:
-        w = csv.DictWriter(f, fieldnames=base_fields, extrasaction="ignore")
-        w.writeheader()
-        for r in out_rows:
-            w.writerow(r)
+        writer = csv.DictWriter(f, fieldnames=base_fields, extrasaction="ignore")
+        writer.writeheader()
+        for row in out_rows:
+            writer.writerow(row)
 
     print(f"\n[OK] New CSV: {args.out}  (rows: {len(out_rows)})")
 
-    # --- Summary by group ---
-    print(f"\n{'='*78}")
-    print(f"SUMMARY BY GROUP (after adding {NEW_TOKENIZER_KEY})")
-    print(f"{'='*78}")
-    print(f"{'Group':<10} {'Datasets':>10} {'Documents':>14} "
-          f"{'xlm-r':>16} {NEW_TOKENIZER_KEY:>16}")
-    print("-" * 76)
+    # ---- Summary by group ----
+    print(f"\n{'=' * 78}")
+    print(f"SUMMARY BY GROUP (after adding {new_key})")
+    print(f"{'=' * 78}")
+    header = f"{'Group':<12} {'Datasets':>10} {'Documents':>14}"
+    for key in existing_token_keys + [new_key]:
+        if key == "mbart":
+            continue
+        header += f" {key:>16}"
+    print(header)
+    print("-" * (36 + 17 * (len(existing_token_keys) + 1)))
 
-    totals = defaultdict(lambda: {"datasets": 0, "docs": 0,
-                                  "xlm_r": 0, NEW_TOKENIZER_KEY: 0})
-    for r in out_rows:
-        docs = int(r.get("docs", 0) or 0)
+    totals: dict[str, dict[str, int]] = defaultdict(
+        lambda: {"datasets": 0, "docs": 0, **{k: 0 for k in existing_token_keys + [new_key]}}
+    )
+    for row in out_rows:
+        docs = int(row.get("docs", 0) or 0)
         if docs == 0:
             continue
-        g = r.get("group", "?")
-        totals[g]["datasets"] += 1
-        totals[g]["docs"] += docs
-        totals[g]["xlm_r"] += int(r.get("tokens_xlm_r", 0) or 0)
-        totals[g][NEW_TOKENIZER_KEY] += int(r.get(f"tokens_{NEW_TOKENIZER_KEY}", 0) or 0)
+        group = row.get("group", "?")
+        totals[group]["datasets"] += 1
+        totals[group]["docs"] += docs
+        for key in existing_token_keys + [new_key]:
+            if key == "mbart":
+                continue
+            totals[group][key] += int(row.get(f"tokens_{key}", 0) or 0)
 
-    grand_docs = grand_x = grand_m = 0
-    for g in ("bashkir", "tatar", "ossetian", "tajik"):
-        if g not in totals:
+    grand_docs = 0
+    grand_tokens: dict[str, int] = {k: 0 for k in existing_token_keys + [new_key] if k != "mbart"}
+    for group in ("bashkir", "tatar", "ossetian", "tajik"):
+        data = totals.get(group)
+        if not data:
             continue
-        t = totals[g]
-        print(f"{g:<10} {t['datasets']:>10} {t['docs']:>14,} "
-              f"{t['xlm_r']:>16,} {t[NEW_TOKENIZER_KEY]:>16,}")
-        grand_docs += t["docs"]
-        grand_x += t["xlm_r"]
-        grand_m += t[NEW_TOKENIZER_KEY]
+        line = f"{group:<12} {data['datasets']:>10} {data['docs']:>14,}"
+        for key in existing_token_keys + [new_key]:
+            if key == "mbart":
+                continue
+            line += f" {data[key]:>16,}"
+        print(line)
+        grand_docs += data["docs"]
+        for key in existing_token_keys + [new_key]:
+            if key == "mbart":
+                continue
+            grand_tokens[key] += data[key]
 
-    print("-" * 76)
-    print(f"{'TOTAL':<10} {'':>10} {grand_docs:>14,} "
-          f"{grand_x:>16,} {grand_m:>16,}")
+    print("-" * (36 + 17 * (len(existing_token_keys) + 1)))
+    line = f"{'TOTAL':<12} {'':>10} {grand_docs:>14,}"
+    for key in existing_token_keys + [new_key]:
+        if key == "mbart":
+            continue
+        line += f" {grand_tokens[key]:>16,}"
+    print(line)
 
 
 if __name__ == "__main__":
     main()
+    

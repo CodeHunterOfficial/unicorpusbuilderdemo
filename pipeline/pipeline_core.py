@@ -4,7 +4,6 @@ import threading
 import sys
 import os
 
-# Add project root to sys.path
 sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
 from tqdm import tqdm
@@ -30,12 +29,12 @@ warnings.filterwarnings("ignore", category=XMLParsedAsHTMLWarning)
 from config.loader import get_config, load_yaml_config, match_site
 from logger_setup import get_file_logger
 
-# Initialize file-only logger
 logger = get_file_logger("pipeline_core", "logs/pipeline_core.log")
 
-# =====================================================
+
+# ---------------------------------------------------------------------------
 # Utilities
-# =====================================================
+# ---------------------------------------------------------------------------
 
 def now_iso() -> str:
     return time.strftime("%Y-%m-%dT%H:%M:%SZ", time.gmtime())
@@ -87,8 +86,8 @@ def apply_date_locale(date_str: str, locale_map: Optional[Dict[str, str]]) -> st
     """Replace non-standard month names with English equivalents."""
     if not locale_map:
         return date_str
-    for tg, en in locale_map.items():
-        date_str = date_str.replace(tg, en)
+    for src, dst in locale_map.items():
+        date_str = date_str.replace(src, dst)
     return date_str
 
 
@@ -99,27 +98,24 @@ def parse_datetime_value(
     """
     Parse a date/time string into ISO format.
 
-    ``ignoretz=True`` is required because ``dateutil`` raises
-    ``UnknownTimezoneWarning`` when it sees a token it believes is a
-    timezone name but cannot resolve — for example ``IV`` appears in
-    some dates on ``tatar-inform`` pages and gets mistaken for a
-    timezone. ``ignoretz=True`` returns a naive ``datetime`` and
-    suppresses that warning path entirely. Every downstream consumer
-    of this value is date-oriented (``normalize_date``, ISO output), so
-    dropping the timezone is lossless for this pipeline.
+    ``dayfirst=True`` handles numeric DD.MM.YYYY strings (``05.10.2026``
+    means 5 October, not 10 May); ISO-8601 inputs are parsed identically
+    with or without it. ``ignoretz=True`` suppresses UnknownTimezoneWarning
+    on tokens that look like timezone names but are not (``IV`` on some
+    Tatar pages). Every downstream consumer of this value is date-oriented,
+    so dropping the timezone is lossless.
 
-    Returns the parsed ISO string on success, the original value on
-    parse failure, or ``None`` on empty input.
+    Returns the ISO string on success, the original value on parse
+    failure, or ``None`` on empty input.
     """
     if not value:
         return None
     value = clean_text(value)
     if not value:
         return None
-    # Apply locale mapping before parsing
     value = apply_date_locale(value, locale_map)
     try:
-        dt = dateparser.parse(value, fuzzy=True, ignoretz=True)
+        dt = dateparser.parse(value, fuzzy=True, ignoretz=True, dayfirst=True)
         if dt:
             return dt.isoformat()
     except Exception:
@@ -179,9 +175,38 @@ def uniq_keep_order(items: Iterable[str]) -> List[str]:
     return out
 
 
-# =====================================================
+def _url_passes_article_filters(url: str, site_cfg: Dict[str, Any]) -> bool:
+    """
+    Check an absolute URL against the site's article-URL rules.
+
+    Priority:
+      1. ``article_url_regex`` (if present) — matched against the path
+         first, then against the full URL. Path-first lets patterns such
+         as ``^/tg/\\\\d{4}/...`` work without embedding the host.
+      2. ``article_url_filters`` (substring match against the full URL).
+      3. Built-in defaults (``/news/``, ``/article/``, ``/story/``,
+         ``/post/``, ``/a/``).
+    """
+    low = url.lower()
+    path = (get_path(url) or "").lower()
+
+    regex = site_cfg.get("article_url_regex")
+    if regex:
+        try:
+            return bool(re.search(regex, path)) or bool(re.search(regex, low))
+        except re.error:
+            pass
+
+    filters = site_cfg.get("article_url_filters") or []
+    if filters:
+        return any(f.lower() in low for f in filters)
+
+    return any(x in low for x in ("/news/", "/article/", "/story/", "/post/", "/a/"))
+
+
+# ---------------------------------------------------------------------------
 # Core Engine
-# =====================================================
+# ---------------------------------------------------------------------------
 
 @dataclass
 class PipelineEngine:
@@ -225,19 +250,24 @@ class PipelineEngine:
     # -------------------------------------------------
 
     def get_date_locale_map(self, url: str) -> Optional[Dict[str, str]]:
+        """
+        Return the month-name map for a site.
+
+        Priority: ``site_cfg.date_locale`` → fallback to
+        ``site_cfg.default_language`` so that a Tajik site without an
+        explicit locale still resolves ``Октябрь`` etc.
+        """
         site_cfg = self.site_cfg(url)
-        locale_name = site_cfg.get("date_locale")
+        locale_name = site_cfg.get("date_locale") or site_cfg.get("default_language")
         if not locale_name:
             return None
 
-        # New modular path: config.languages.<lang>.date_locale
         languages = self.root_cfg.get("languages", {})
         if isinstance(languages, dict) and locale_name in languages:
             lang_pkg = languages[locale_name]
             if isinstance(lang_pkg, dict):
                 return lang_pkg.get("date_locale")
 
-        # Fallback: old monolithic path reusable_strategies.date_locale
         reusable = self.root_cfg.get("reusable_strategies", {})
         date_locales = reusable.get("date_locale", {})
         if isinstance(date_locales, dict):
@@ -248,14 +278,11 @@ class PipelineEngine:
         return None
 
     # -------------------------------------------------
-    # HTTP Session
+    # HTTP session
     # -------------------------------------------------
 
     def _build_headers_and_cookies(self, url: str) -> Tuple[Dict[str, str], Dict[str, str]]:
         site_cfg = self.site_cfg(url)
-        # Use a realistic browser User-Agent. A custom bot UA is blocked
-        # by anti-bot filters on several news sites (notably alaniatv.ru),
-        # which return a lightweight shell page without article cards.
         ua = (
             "Mozilla/5.0 (Windows NT 10.0; Win64; x64) "
             "AppleWebKit/537.36 (KHTML, like Gecko) "
@@ -297,7 +324,6 @@ class PipelineEngine:
         timeout = int(req.get("timeout", 25))
         retries = int(req.get("retries", 3))
         backoff_base = float(req.get("backoff_base", 1.6))
-        # verify_ssl from site config (already resolved by loader)
         verify_ssl = site_cfg.get("verify_ssl", True)
 
         sess = self._session()
@@ -326,36 +352,38 @@ class PipelineEngine:
         raise RuntimeError(f"Failed to fetch URL: {url}")
 
     def fetch_api_json(self, url: str, site_cfg: Dict[str, Any]) -> Dict[str, Any]:
-        """Execute GET request to API and return JSON."""
-        api_cfg = site_cfg.get('api_source', {})
-        timeout = api_cfg.get('timeout', self.request_cfg().get('timeout', 30))
-        retries = api_cfg.get('retries', self.request_cfg().get('retries', 3))
-        backoff_base = self.request_cfg().get('backoff_base', 1.6)
+        api_cfg = site_cfg.get("api_source", {})
+        timeout = api_cfg.get("timeout", self.request_cfg().get("timeout", 30))
+        retries = api_cfg.get("retries", self.request_cfg().get("retries", 3))
+        backoff_base = self.request_cfg().get("backoff_base", 1.6)
+
+        if retries < 1:
+            raise ValueError("api retries must be >= 1")
 
         sess = self._session()
         headers, cookies = self._build_headers_and_cookies(url)
-        # Add API-specific headers if specified in config
-        extra_headers = api_cfg.get('headers', {})
-        headers.update(extra_headers)
+        headers.update(api_cfg.get("headers", {}))
 
         for attempt in range(retries):
             try:
-                r = sess.get(url, headers=headers, cookies=cookies,
-                            timeout=timeout, verify=site_cfg.get('verify_ssl', True))
+                r = sess.get(
+                    url, headers=headers, cookies=cookies,
+                    timeout=timeout, verify=site_cfg.get("verify_ssl", True),
+                )
                 r.raise_for_status()
                 return r.json()
-            except Exception as e:
+            except Exception:
                 if attempt == retries - 1:
                     raise
                 time.sleep(backoff_base ** attempt + random.uniform(0.1, 0.5))
-        return {}
+
+        raise RuntimeError(f"API request failed: {url}")
 
     def can_fetch_robots(self, url: str) -> bool:
         if not bool(self.global_cfg().get("respect_robots", False)):
             return True
         try:
             import urllib.robotparser as robotparser
-
             parsed = urlparse(url)
             robots_url = f"{parsed.scheme}://{parsed.netloc}/robots.txt"
             rp = robotparser.RobotFileParser()
@@ -370,37 +398,31 @@ class PipelineEngine:
     # -------------------------------------------------
 
     def _safe_select(self, soup, css_selector: str) -> List[Tag]:
-        """Safe select with :contains() support for BeautifulSoup."""
-        if ':contains(' in css_selector:
-            # Extract text to search for
+        if ":contains(" in css_selector:
             match = re.search(r":contains\('([^']*)'\)", css_selector)
             if not match:
                 return []
             text = match.group(1)
-            # Remove :contains() and everything after, leaving clean CSS
-            clean_selector = re.sub(r":contains\('[^']*'\)", '', css_selector).strip()
+            clean_selector = re.sub(r":contains\('[^']*'\)", "", css_selector).strip()
             if clean_selector:
                 try:
                     elements = soup.select(clean_selector)
                 except Exception:
                     elements = []
-                # Filter by text
                 return [el for el in elements if isinstance(el, Tag) and text in el.get_text()]
-            else:
-                # Find all tags with the needed text
-                return [el for el in soup.find_all(True) if isinstance(el, Tag) and text in el.get_text()]
-        else:
-            try:
-                return soup.select(css_selector)
-            except Exception:
-                return []
+            return [el for el in soup.find_all(True) if isinstance(el, Tag) and text in el.get_text()]
+
+        try:
+            return soup.select(css_selector)
+        except Exception:
+            return []
 
     def _safe_select_one(self, soup, css_selector: str) -> Optional[Tag]:
         results = self._safe_select(soup, css_selector)
         return results[0] if results else None
 
     # -------------------------------------------------
-    # Page type detection
+    # Page-type detection
     # -------------------------------------------------
 
     def detect_page_type(self, soup: BeautifulSoup, url: str) -> str:
@@ -408,7 +430,6 @@ class PipelineEngine:
         low = url.lower()
         scores = defaultdict(float)
 
-        # URL heuristics
         if any(x in low for x in ["/news/", "/article/", "/story/", "/post/", "/a/"]):
             scores["article"] += 0.25
         if any(x in low for x in ["/rubric/", "/category/", "/tag/", "/section/", "/archive/", "/page/"]):
@@ -416,7 +437,6 @@ class PipelineEngine:
         if get_path(url) in ("", "/"):
             scores["listing"] += 0.10
 
-        # HTML heuristics
         if soup.select_one("article"):
             scores["article"] += 0.35
         if soup.select_one('meta[property="og:type"][content="article"]'):
@@ -424,7 +444,6 @@ class PipelineEngine:
         if soup.select_one("h1"):
             scores["article"] += 0.10
 
-        # Card counting
         cards = 0
         for sel in site_cfg.get("card_selectors", []):
             try:
@@ -439,7 +458,6 @@ class PipelineEngine:
         if links > 30 and paras < 25:
             scores["listing"] += 0.35
 
-        # Pagination signals
         if (
             soup.select_one("a[rel='next']")
             or soup.select_one("link[rel='next']")
@@ -477,7 +495,6 @@ class PipelineEngine:
             except Exception:
                 pass
 
-        # Additional text-based detection
         next_texts = ["Next", "→", ">"]
         for a in soup.find_all("a", href=True):
             txt = clean_text(a.get_text(" ", strip=True))
@@ -486,7 +503,6 @@ class PipelineEngine:
                 if full:
                     return full
 
-        # Query-parameter based pagination
         parsed = urlparse(current_url)
         qs = parse_qs(parsed.query)
 
@@ -506,20 +522,15 @@ class PipelineEngine:
             except Exception:
                 pass
 
-        # Path-based pagination
         m = re.search(r"/page/(\d+)", parsed.path)
         if m:
             cur = int(m.group(1))
             new_path = re.sub(r"/page/\d+", f"/page/{cur + 1}", parsed.path)
             return urlunparse(parsed._replace(path=new_path))
 
-
-        # If URL doesn't have p or page param yet, look for any link with ?p= on the page
-        parsed = urlparse(current_url)
-        qs = parse_qs(parsed.query)
         if "p" not in qs and "page" not in qs:
             for a in soup.find_all("a", href=True):
-                href = a.get("href")
+                href = a.get("href") or ""
                 match = re.search(r"[?&]p=(\d+)", href)
                 if match:
                     next_num = int(match.group(1)) + 1
@@ -541,9 +552,7 @@ class PipelineEngine:
                 for a in self._safe_select(soup, sel):
                     href = a.get("href") if isinstance(a, Tag) else None
                     full = abs_url(base_url, href)
-                    if not full:
-                        continue
-                    if full not in seen:
+                    if full and full not in seen:
                         seen.add(full)
                         out.append(full)
             except Exception:
@@ -553,7 +562,6 @@ class PipelineEngine:
     def _rubrics_pattern_fallback(self, base_url: str, soup: BeautifulSoup, site_cfg: Dict[str, Any]) -> List[str]:
         out: List[str] = []
         seen: Set[str] = set()
-        filters = ensure_list(site_cfg.get("article_url_filters", []))
         excludes = ensure_list(site_cfg.get("article_url_excludes", []))
 
         for a in soup.find_all("a", href=True):
@@ -565,7 +573,7 @@ class PipelineEngine:
             low = full.lower()
             if excludes and any(x.lower() in low for x in excludes):
                 continue
-            if filters and not any(x.lower() in low for x in filters):
+            if not _url_passes_article_filters(full, site_cfg):
                 continue
             if full not in seen:
                 seen.add(full)
@@ -632,13 +640,11 @@ class PipelineEngine:
         return uniq_keep_order(candidates)
 
     def _extract_api_items(self, payload: dict, site_cfg: dict) -> list:
-        """Parameterized extraction of news list from API JSON response."""
-        api_cfg = site_cfg['api_source']
-        items_path = api_cfg.get('items_path', 'data')
+        api_cfg = site_cfg["api_source"]
+        items_path = api_cfg.get("items_path", "data")
 
-        # Find the container with items
         container = payload
-        for part in items_path.split('.'):
+        for part in items_path.split("."):
             if isinstance(container, dict):
                 container = container.get(part, [])
             else:
@@ -646,37 +652,34 @@ class PipelineEngine:
         if not isinstance(container, list):
             return []
 
-        fm = api_cfg.get('field_map', {})
-        nested = api_cfg.get('nested_extraction', {})
-        url_template = fm.get('url_template')
-        site_url = api_cfg.get('site_url', '')
+        fm = api_cfg.get("field_map", {})
+        nested = api_cfg.get("nested_extraction", {})
+        url_template = fm.get("url_template")
+        site_url = api_cfg.get("site_url", "")
 
         items = []
         for obj in container:
             item = {}
-            item['id'] = self._get_nested_value(obj, fm.get('id'))
-            item['title'] = self._get_nested_value(obj, fm.get('title'))
+            item["id"] = self._get_nested_value(obj, fm.get("id"))
+            item["title"] = self._get_nested_value(obj, fm.get("title"))
 
-            # Date: try multiple fields
             date_val = None
-            for date_field in ensure_list(fm.get('date', [])):
+            for date_field in ensure_list(fm.get("date", [])):
                 date_val = self._get_nested_value(obj, date_field)
                 if date_val:
                     break
-            item['date'] = date_val
+            item["date"] = date_val
 
-            item['content_html'] = self._get_nested_value(obj, fm.get('content_html'))
+            item["content_html"] = self._get_nested_value(obj, fm.get("content_html"))
 
-            # Generate article URL
             if url_template:
-                item['url'] = url_template.format(site_url=site_url, id=item.get('id'))
+                item["url"] = url_template.format(site_url=site_url, id=item.get("id"))
             else:
-                item['url'] = None
+                item["url"] = None
 
-            # Nested lists (images, categories, cities)
             for key, rule in nested.items():
-                path = rule.get('path')
-                sub_key = rule.get('key')
+                path = rule.get("path")
+                sub_key = rule.get("key")
                 sub_container = self._get_nested_value(obj, path) or []
                 values = []
                 for sub in ensure_list(sub_container):
@@ -685,16 +688,12 @@ class PipelineEngine:
                         values.append(val)
                 item[key] = values
 
-            # Keep raw data
-            item['raw'] = obj
+            item["raw"] = obj
             items.append(item)
 
         return items
 
     def collect_rubrics(self, base_url: str, context_rubrics: Optional[Iterable[str]] = None) -> List[str]:
-        """
-        Universal rubric (category/section) collection for any site from config.
-        """
         if context_rubrics:
             out: List[str] = []
             for r in context_rubrics:
@@ -704,13 +703,12 @@ class PipelineEngine:
             return uniq_keep_order(out)
 
         site_cfg = self.site_cfg(base_url)
-        if site_cfg.get('api_source', {}).get('enabled'):
+        if site_cfg.get("api_source", {}).get("enabled"):
             return []
         strategies = site_cfg.get("rubric_strategy") or self.global_cfg().get(
             "rubric_strategies_order"
         ) or ["menu_scraping"]
 
-        # Load main page
         try:
             html = self.fetch_html(base_url)
         except Exception:
@@ -719,10 +717,8 @@ class PipelineEngine:
 
         all_rubrics: List[str] = []
 
-        # Process strategies
         for strat in strategies:
             if strat == "menu_scraping":
-                # Exact selectors from site profile
                 found_any = False
                 for sel in site_cfg.get("rubric_selectors", []):
                     try:
@@ -735,9 +731,7 @@ class PipelineEngine:
                     except Exception:
                         pass
 
-                # If exact selectors weren't enough (< 3), enable heuristics
                 if not found_any or len(set(all_rubrics)) < 3:
-                    # Traverse all common navigation blocks
                     for container_sel in [
                         "nav", "header", ".menu", ".nav", ".navigation",
                         "ul.menu", "ul.nav", "div.nav", "div.menu",
@@ -767,10 +761,8 @@ class PipelineEngine:
                 all_rubrics.extend(self._rubrics_auto_detect_multi(base_url, soup, html, site_cfg))
 
             elif strat == "context_passed":
-                # already handled above
                 continue
 
-        # Cleanup: domains, duplicates, noise
         same_domain_only = self.domain_only()
         uniq: List[str] = []
         seen: Set[str] = set()
@@ -785,7 +777,6 @@ class PipelineEngine:
                 seen.add(u)
                 uniq.append(u)
 
-        # Debug output
         logger.info(f"Collected {len(uniq)} rubrics for {base_url}")
         print(f"[RUBRICS] Found: {len(uniq)}")
         for r in uniq[:10]:
@@ -800,7 +791,6 @@ class PipelineEngine:
     # -------------------------------------------------
 
     def extract_page_meta_stub(self, soup: BeautifulSoup, url: str, site_cfg: Dict[str, Any]) -> Dict[str, Any]:
-        """Lightweight metadata extraction for listing pages."""
         title = None
         for sel in site_cfg.get("title_selectors", []):
             try:
@@ -860,6 +850,7 @@ class PipelineEngine:
         seen_urls: Set[str] = set()
         same_domain_only = self.domain_only()
         exclude_classes = site_cfg.get("card_exclude_classes", [])
+        excludes = site_cfg.get("article_url_excludes", []) or []
 
         for sel in site_cfg.get("card_selectors", []):
             for card in self._safe_select(soup, sel):
@@ -890,13 +881,11 @@ class PipelineEngine:
                     if is_noise_url(url):
                         continue
 
-                    # Apply article URL filters / excludes
                     low = url.lower()
-                    if site_cfg.get("article_url_excludes") and any(x.lower() in low for x in site_cfg.get("article_url_excludes", [])):
+                    if excludes and any(x.lower() in low for x in excludes):
                         continue
-                    if site_cfg.get("article_url_filters") and not any(x.lower() in low for x in site_cfg.get("article_url_filters", [])):
-                        if not any(x in low for x in ["/news/", "/article/", "/story/", "/post/", "/a/"]):
-                            continue
+                    if not _url_passes_article_filters(url, site_cfg):
+                        continue
 
                     if url in seen_urls:
                         continue
@@ -930,7 +919,7 @@ class PipelineEngine:
                             raw_time = txt
                             break
 
-                    item = {
+                    items.append({
                         "url": url,
                         "title": title or page_meta.get("title"),
                         "content": snippet or title or page_meta.get("title"),
@@ -943,13 +932,11 @@ class PipelineEngine:
                         "scraped_at": now_iso(),
                         "source_page": page_url,
                         "page_type": "listing_item",
-                    }
-                    items.append(item)
+                    })
                 except Exception as e:
                     logger.error(f"Error processing card: {e}")
                     continue
 
-        # Anchors fallback
         if len(items) < 3:
             for a in soup.find_all("a", href=True):
                 url = abs_url(page_url, a.get("href"))
@@ -961,11 +948,10 @@ class PipelineEngine:
                     continue
 
                 low = url.lower()
-                if site_cfg.get("article_url_excludes") and any(x.lower() in low for x in site_cfg.get("article_url_excludes", [])):
+                if excludes and any(x.lower() in low for x in excludes):
                     continue
-                if site_cfg.get("article_url_filters") and not any(x.lower() in low for x in site_cfg.get("article_url_filters", [])):
-                    if not any(x in low for x in ["/news/", "/article/", "/story/", "/post/", "/a/"]):
-                        continue
+                if not _url_passes_article_filters(url, site_cfg):
+                    continue
 
                 if url in seen_urls:
                     continue
@@ -975,22 +961,20 @@ class PipelineEngine:
                 if len(txt) < 8:
                     continue
                 seen_urls.add(url)
-                items.append(
-                    {
-                        "url": url,
-                        "title": txt or page_meta.get("title"),
-                        "content": txt or page_meta.get("title"),
-                        "date": page_meta.get("date"),
-                        "author": page_meta.get("author"),
-                        "category": page_meta.get("category"),
-                        "time": extract_time_part(page_meta.get("date") or txt),
-                        "site": get_domain(url),
-                        "hash": sha256_hex((txt or "") + "|" + url, trunc=32),
-                        "scraped_at": now_iso(),
-                        "source_page": page_url,
-                        "page_type": "listing_item",
-                    }
-                )
+                items.append({
+                    "url": url,
+                    "title": txt or page_meta.get("title"),
+                    "content": txt or page_meta.get("title"),
+                    "date": page_meta.get("date"),
+                    "author": page_meta.get("author"),
+                    "category": page_meta.get("category"),
+                    "time": extract_time_part(page_meta.get("date") or txt),
+                    "site": get_domain(url),
+                    "hash": sha256_hex((txt or "") + "|" + url, trunc=32),
+                    "scraped_at": now_iso(),
+                    "source_page": page_url,
+                    "page_type": "listing_item",
+                })
         return items
 
     def detect_page_candidates(
@@ -999,10 +983,8 @@ class PipelineEngine:
         context_rubrics: Optional[Iterable[str]] = None,
     ) -> Dict[str, Dict[str, Any]]:
         site_cfg_main = self.site_cfg(start_url)
-        if site_cfg_main.get('api_source', {}).get('enabled'):
-            return self.detect_page_candidates_api(
-                start_url, site_cfg_main
-            )
+        if site_cfg_main.get("api_source", {}).get("enabled"):
+            return self.detect_page_candidates_api(start_url, site_cfg_main)
 
         limits = self.limits_cfg()
         max_pages = int(limits.get("max_pages", 250))
@@ -1015,7 +997,7 @@ class PipelineEngine:
 
         queue.append((start_url, 0))
 
-        rubric_links = []
+        rubric_links: List[str] = []
         try:
             rubric_links = self.collect_rubrics(start_url, context_rubrics=context_rubrics)
         except Exception:
@@ -1024,14 +1006,13 @@ class PipelineEngine:
         for r in rubric_links:
             queue.append((r, 1))
 
-        logger.info(f"Starting crawl: {start_url} (max_pages={max_pages}, max_depth={max_depth}, max_items={max_items})")
-
-        pbar = tqdm(
-            total=max_pages,
-            desc="[CRAWL] Page traversal",
-            unit="page",
-            dynamic_ncols=True,
+        logger.info(
+            f"Starting crawl: {start_url} "
+            f"(max_pages={max_pages}, max_depth={max_depth}, max_items={max_items})"
         )
+
+        pbar = tqdm(total=max_pages, desc="[CRAWL] Page traversal",
+                    unit="page", dynamic_ncols=True)
 
         while queue and len(visited_pages) < max_pages and len(discovered) < max_items:
             current_url, depth = queue.popleft()
@@ -1050,19 +1031,15 @@ class PipelineEngine:
 
             visited_pages.add(current_url)
             pbar.update(1)
-            pbar.set_postfix_str(
-                f"candidates: {len(discovered)}, depth: {depth}"
-            )
+            pbar.set_postfix_str(f"candidates: {len(discovered)}, depth: {depth}")
 
             site_cfg = self.site_cfg(current_url)
 
-            # Try to load HTML
             try:
                 html = self.fetch_html(current_url)
             except Exception:
                 continue
 
-            # Safely create soup – skip page if invalid or binary
             try:
                 soup = BeautifulSoup(html, "html.parser")
             except Exception:
@@ -1071,7 +1048,6 @@ class PipelineEngine:
             page_type = self.detect_page_type(soup, current_url)
             page_meta = self.extract_page_meta_stub(soup, current_url, site_cfg)
 
-            # listing/homepage: discover from cards
             if page_type in ("listing", "unknown"):
                 try:
                     listing_items = self.extract_listing_items_stub(html, current_url)
@@ -1082,7 +1058,8 @@ class PipelineEngine:
                     if u and u not in discovered:
                         discovered[u] = item
 
-            # Every visible article-like link
+            excludes = site_cfg.get("article_url_excludes", []) or []
+
             for a in soup.find_all("a", href=True):
                 href = abs_url(current_url, a.get("href"))
                 if not href:
@@ -1093,21 +1070,14 @@ class PipelineEngine:
                     continue
 
                 low = href.lower()
-                excluded = site_cfg.get("article_url_excludes", [])
-                if excluded and any(x.lower() in low for x in excluded):
+                if excludes and any(x.lower() in low for x in excludes):
                     continue
 
                 txt = clean_text(a.get_text(" ", strip=True))
                 if is_noise_text(txt, site_cfg.get("_noise_words", [])):
                     continue
 
-                article_like = False
-                if site_cfg.get("article_url_filters"):
-                    article_like = any(x.lower() in low for x in site_cfg.get("article_url_filters", []))
-                if not article_like:
-                    article_like = any(x in low for x in ["/news/", "/article/", "/story/", "/post/", "/a/"])
-
-                if article_like and href not in discovered:
+                if _url_passes_article_filters(href, site_cfg) and href not in discovered:
                     discovered[href] = {
                         "url": href,
                         "title": txt or page_meta.get("title"),
@@ -1123,12 +1093,10 @@ class PipelineEngine:
                         "page_type": "article_candidate",
                     }
 
-            # next page
             next_url = self.get_next_page_url(soup, current_url)
             if next_url and next_url not in visited_pages:
                 queue.append((next_url, depth))
 
-            # rubric expansion
             for a in soup.find_all("a", href=True):
                 href = abs_url(current_url, a.get("href"))
                 if not href:
@@ -1159,15 +1127,14 @@ class PipelineEngine:
         self,
         start_url: str,
         site_cfg: Dict[str, Any],
-        max_items: int = None
+        max_items: int = None,
     ) -> Dict[str, Dict[str, Any]]:
-
-        api_cfg = site_cfg['api_source']
+        api_cfg = site_cfg["api_source"]
         last_page = self._get_api_last_page(site_cfg)
-        delay = api_cfg.get('delay', 0.15)
+        delay = api_cfg.get("delay", 0.15)
         discovered = {}
 
-        max_items = max_items or self.limits_cfg().get('max_items', 10000)
+        max_items = max_items or self.limits_cfg().get("max_items", 10000)
         logger.info(f"Starting API crawl: last_page={last_page}, max_items={max_items}")
 
         for page in range(1, last_page + 1):
@@ -1179,22 +1146,21 @@ class PipelineEngine:
                 items = self._extract_api_items(data, site_cfg)
 
                 for item in items:
-                    article_url = item.get('url')
+                    article_url = item.get("url")
                     if not article_url:
                         continue
-                    # Convert to candidate format
                     discovered[article_url] = {
-                        'url': article_url,
-                        'title': item.get('title'),
-                        'content': item.get('content_html', ''),
-                        'date': item.get('date'),
-                        'author': site_cfg.get('default_author'),
-                        'category': ', '.join(item.get('categories', [])),
-                        'images': item.get('images', []),
-                        'raw': item.get('raw'),
-                        'scraped_at': now_iso(),
-                        'source_page': url,
-                        'page_type': 'api_candidate',
+                        "url": article_url,
+                        "title": item.get("title"),
+                        "content": item.get("content_html", ""),
+                        "date": item.get("date"),
+                        "author": site_cfg.get("default_author"),
+                        "category": ", ".join(item.get("categories", [])),
+                        "images": item.get("images", []),
+                        "raw": item.get("raw"),
+                        "scraped_at": now_iso(),
+                        "source_page": url,
+                        "page_type": "api_candidate",
                     }
                     if len(discovered) >= max_items:
                         break
@@ -1225,10 +1191,9 @@ class PipelineEngine:
         }
 
     def _get_nested_value(self, obj: Any, path_str: str) -> Any:
-        """Extract value by dot-separated path: 'news_type.name'."""
         if not obj or not path_str:
             return None
-        parts = path_str.split('.')
+        parts = path_str.split(".")
         current = obj
         for p in parts:
             if isinstance(current, dict):
@@ -1238,21 +1203,18 @@ class PipelineEngine:
         return current
 
     def _get_api_last_page(self, site_cfg: Dict[str, Any]) -> int:
-        api_cfg = site_cfg['api_source']
+        api_cfg = site_cfg["api_source"]
 
-        # Simple fixed limit
-        if 'fixed_last_page' in api_cfg:
-            return int(api_cfg['fixed_last_page'])
+        if "fixed_last_page" in api_cfg:
+            return int(api_cfg["fixed_last_page"])
 
-        # Flexible configuration via last_page_detection
-        detection = api_cfg.get('last_page_detection', {})
-        mode = detection.get('mode', 'fixed')
-        if mode == 'fixed':
-            return detection.get('value', 1)
+        detection = api_cfg.get("last_page_detection", {})
+        mode = detection.get("mode", "fixed")
+        if mode == "fixed":
+            return detection.get("value", 1)
 
-        # Auto-detection by binary search
-        start = detection.get('initial_page', 1)
-        max_probe = detection.get('max_probe', 1000000)
+        start = detection.get("initial_page", 1)
+        max_probe = detection.get("max_probe", 1000000)
 
         def nonempty(page):
             try:
@@ -1271,7 +1233,7 @@ class PipelineEngine:
         while hi <= max_probe and nonempty(hi):
             lo = hi
             hi *= 2
-            time.sleep(api_cfg.get('delay', 0.1))
+            time.sleep(api_cfg.get("delay", 0.1))
 
         left, right = lo, hi
         while left + 1 < right:
@@ -1280,27 +1242,24 @@ class PipelineEngine:
                 left = mid
             else:
                 right = mid
-            time.sleep(api_cfg.get('delay', 0.1))
+            time.sleep(api_cfg.get("delay", 0.1))
         return left
 
     def _make_api_page_url(self, site_cfg: Dict[str, Any], page: int) -> str:
-        api_cfg = site_cfg['api_source']
-        base = api_cfg['base_api_url'].rstrip('/')
-        endpoint = api_cfg['list_endpoint'].format(page=page)
-        return base + endpoint if endpoint.startswith('/') else base + '/' + endpoint
+        api_cfg = site_cfg["api_source"]
+        base = api_cfg["base_api_url"].rstrip("/")
+        endpoint = api_cfg["list_endpoint"].format(page=page)
+        return base + endpoint if endpoint.startswith("/") else base + "/" + endpoint
 
 
-# =====================================================
+# ---------------------------------------------------------------------------
 # Smoke test
-# =====================================================
+# ---------------------------------------------------------------------------
 
 if __name__ == "__main__":
-
-    # Default values
     yaml_path = "config/universal.yaml"
     start = "https://khovar.tj"
 
-    # Override from arguments if passed
     if len(sys.argv) >= 2:
         yaml_path = sys.argv[1]
     if len(sys.argv) >= 3:
