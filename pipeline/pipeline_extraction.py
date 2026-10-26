@@ -70,6 +70,11 @@ _CONTENT_LABEL_RE = re.compile(
     re.I,
 )
 
+_PHOTO_CREDIT_RE = re.compile(
+    r"^\s*(?:АКС|Акс|ФОТО|Фото|ФОТОГРАФИЯ|Фотография|Photo|Credit)\s*[:：\-—]",
+    re.IGNORECASE,
+)
+
 # CMS logins that appear in author fields of Drupal, Bitrix and some WordPress
 # templates. These are not personal names and not editorial bylines; when they
 # appear, the field should be treated as unfilled.
@@ -173,6 +178,8 @@ def _looks_like_author_name(value: Optional[str]) -> bool:
         return False
     if _CONTENT_LABEL_RE.match(text):
         return False
+    if _PHOTO_CREDIT_RE.match(text):
+        return False    
     if _TECH_LOGIN_RE.match(text):
         return False
     if _READING_TIME_RE.fullmatch(text):

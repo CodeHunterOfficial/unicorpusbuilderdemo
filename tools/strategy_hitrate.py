@@ -29,9 +29,10 @@ matches: "Aleksandr Alekseev" matched "Aleksandr Aleksandrov".
 
 ``_looks_like_author_name`` rejects non-name strings that some sites
 expose through ``author_selectors`` or ``meta``: reading times, dates,
-CMS logins, relative days, URLs and e-mail addresses. Keep this filter
-in sync with ``pipeline_extraction._looks_like_author_name`` so that
-the measurement matches the extractor.
+photo credits, CMS logins, relative days, URLs and e-mail addresses.
+Keep this filter in sync with
+``pipeline_extraction._looks_like_author_name`` so that the measurement
+matches the extractor.
 
 Date correctness
 ----------------
@@ -42,7 +43,10 @@ URL sources
 -----------
 Config mode — sites selected from ``config/universal.yaml``, either by
 language (``--langs`` + ``--sites-per-lang``) or by explicit site keys
-(``--sites``). File mode — URLs read from local JSONL files.
+(``--sites``). File mode — URLs read from local JSONL files. URL-file
+mode — URLs read from a CSV with ``url``, ``site``, ``lang`` columns;
+discovery is skipped entirely. Use it to rerun the analysis on the
+same documents after a code change.
 
 Usage
 -----
@@ -51,6 +55,7 @@ Usage
     python tools/strategy_hitrate.py --sites khovar tatar-inform vatantat akbuzat yanshishma iryston
     python tools/strategy_hitrate.py --exclude sssr ozodi
     python tools/strategy_hitrate.py --input-files "D:\\...\\file1.jsonl" "D:\\...\\file2.jsonl"
+    python tools/strategy_hitrate.py --url-file trafilatura_comparison_baseline.csv
 
 Installation
 ------------
@@ -448,6 +453,11 @@ _CONTENT_LABEL_RE = re.compile(
     re.I,
 )
 
+_PHOTO_CREDIT_RE = re.compile(
+    r"^\s*(?:АКС|Акс|ФОТО|Фото|ФОТОГРАФИЯ|Фотография|Photo|Credit)\s*[:：\-—]",
+    re.IGNORECASE,
+)
+
 
 def _looks_like_author_name(value: Optional[str]) -> bool:
     """
@@ -458,6 +468,7 @@ def _looks_like_author_name(value: Optional[str]) -> bool:
 
       * reading times: "1 минута", "2 минуты", "5 минут чтения";
       * dates: "15.03.2024", "2024-03-15", "15 марта 2024";
+      * photo credits: "АКС: Вазорати...", "Фото: «Татар-информ»";
       * CMS logins: "admin", "administrator", "webmaster", "noreply";
       * relative days: "сегодня", "вчера", "позавчера";
       * URLs, e-mail addresses;
@@ -473,6 +484,8 @@ def _looks_like_author_name(value: Optional[str]) -> bool:
     if len(text) < 2 or len(text) > 120:
         return False
     if _CONTENT_LABEL_RE.match(text):
+        return False
+    if _PHOTO_CREDIT_RE.match(text):
         return False
     if _TECH_LOGIN_RE.match(text):
         return False
@@ -691,6 +704,27 @@ def iter_articles_from_files(
                     "site": site,
                     "lang": obj.get("language", "?"),
                 }
+
+
+def iter_articles_from_url_file(path: Path) -> list[dict[str, str]]:
+    """Load ``{url, site, lang}`` dicts from a CSV file."""
+    with open(path, "r", encoding="utf-8", newline="") as handle:
+        reader = csv.DictReader(handle)
+        rows: list[dict[str, str]] = []
+        for row in reader:
+            url = (row.get("url") or "").strip()
+            if not url:
+                continue
+            if (row.get("error") or "").strip():
+                continue
+            rows.append(
+                {
+                    "url": url,
+                    "site": (row.get("site") or "?").strip() or "?",
+                    "lang": (row.get("lang") or "?").strip() or "?",
+                }
+            )
+    return rows
 
 
 # ---------------------------------------------------------------------------
@@ -1314,12 +1348,27 @@ def main(argv: Optional[list[str]] = None) -> int:
     parser.add_argument("--input-dir", default=None)
     parser.add_argument("--per-site", type=int, default=30)
     parser.add_argument("--limit", type=int, default=300)
+    parser.add_argument(
+        "--url-file",
+        default=None,
+        help="CSV with url,site,lang columns; skips discovery",
+    )
 
     args = parser.parse_args(argv)
 
     engine = ExtractionEngine(yaml_path=args.config)
 
-    if args.input_files or args.input_dir:
+    if args.url_file:
+        url_path = Path(args.url_file)
+        if not url_path.exists():
+            print(f"[ERROR] URL file not found: {url_path}")
+            return 1
+        urls_to_process = iter_articles_from_url_file(url_path)
+        if not urls_to_process:
+            print(f"[ERROR] No usable URLs in {url_path}")
+            return 1
+        print(f"[URLS] Loaded {len(urls_to_process)} from {url_path}")
+    elif args.input_files or args.input_dir:
         if args.input_files:
             files = [Path(p) for p in args.input_files]
         else:
