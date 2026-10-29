@@ -970,7 +970,7 @@ class PipelineEngine:
             if r != start_url:
                 queue.append((r, 1))
 
-        m_section = re.match(r"^/(?:[a-z]{2}/)?([^/]+)/?$", urlparse(start_url).path)
+        m_section = re.match(r"^/(?:[a-z]{2}/)?(?:category/)?([^/]+)/?$", urlparse(start_url).path)        
         section_from_start = (
             m_section.group(1)
             if m_section and m_section.group(1) not in ("page", "node", "")

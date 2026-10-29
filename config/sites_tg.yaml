@@ -179,9 +179,6 @@ sites:
       - "nav.ap-arch-nav a.next"
       - "link[rel='next']"
 
-    # article_url_regex requires pipeline_core to read this field.
-    # article_url_filters works on current code via substring match
-    # and is the effective filter until the regex path is wired.
     article_url_regex: "^/tg/\\d{4}/\\d{2}/\\d{2}/[^/]+/?$"
     article_url_filters:
       - "/tg/2026/"
@@ -587,11 +584,7 @@ sites:
     article_url_excludes: []
 
   # ============================================================
-  # president.tj — API-driven site.
-  # fixed_last_page is a static snapshot: president.tj news items
-  # published after the file was written land on page numbers above
-  # this value and are not fetched. Raise it periodically, or switch
-  # to last_page_detection.mode = auto to probe the API at runtime.
+  # president.tj — API-driven presidential press service
   # ============================================================
   president-tj:
     match:
@@ -805,60 +798,55 @@ sites:
       - "/tag/"
       - "/author/"
       - "/page/"
-      
+
   # ============================================================
-  # vkd.tj — Ministry of Internal Affairs news portal
-   # ============================================================
-       
-  vkd:
+  # oila.tj — family and lifestyle news portal
+  # ============================================================
+  oila:
     match:
-      - "vkd.tj"
-      - "www.vkd.tj"
-      - "mvd.tj"
-      - "www.mvd.tj"
+      - "oila.tj"
     default_language: "tg"
     noise_language: ["common", "tg"]
-    start_url: "https://www.mvd.tj/tj/ruydodho/"
+    start_url: "https://oila.tj/category/khavodis"
     verify_ssl: true
 
     rubric_strategy:
+      - "menu_scraping"
       - "context_passed"
-      - "url_path_parsing"
 
-    article_url_regex: "^/\\d+-[^/]+\\.html$"
+    rubric_selectors:
+      - "ul.menu-desk a[href*='/category/']"
+      - "nav a[href*='/category/']"
+
+    article_url_regex: "^/news/[a-z0-9-]+/?$"
 
     article_url_excludes:
-      - "/page/"
-      - "/tj/"
-      - "/uploads/"
-      - "/engine/"
-      - "/templates/"
-      - "/feedback"
-      - "\\.(jpg|jpeg|png|webp|gif|pdf|css|js)$"
+      - "/news/search"
+      - "/news/user/"
+      - "/wishlist"
+      - "/category/"
 
     card_selectors:
-      - "div.side-item.side-item2"
-      - "div.main-item"
-      - "div.news-item"
+      - "div.article"
 
     article_link_selectors:
-      - "div.side-item.side-item2 a.side-item-link[href$='.html']"
-      - "div.side-item.side-item2 a[href$='.html']"
-      - "div.main-item a.main-item-link[href$='.html']"
-      - "a[href$='.html']"
+      - "a.article__title"
+      - "a.article__img"
 
     pagination_selectors:
-      - "link[rel='next']"
-      - "a[href*='/page/']"
+      - "a[rel='next']"
+      - ".pagination a"
+      - "a[href*='?page=']"
 
     title_selectors:
-      - "article.full > h1"
       - "meta[property='og:title']"
+      - "div.title--article"
       - "h1"
+      - "title"
 
     date_selectors:
-      - ".full-meta > div:first-child"
-      - ".full-meta .main-item-date:first-of-type"
+      - "div.date-widget__time"
+      - "meta[property='article:published_time']"
       - "time[datetime]"
 
     author_strategy:
@@ -869,123 +857,29 @@ sites:
       - "meta[property='article:author']"
 
     author_blacklist:
-      - "admin"
-      - "editor"
+      - "Оила"
+      - "oila.tj"
 
     category_strategy:
       - "context_passed"
       - "url_path_parsing"
 
     content_selectors:
-      - "div#full-text"
-      - "div.full-text"
+      - "article.page-article__wysiwyg"
+      - "article.wysiwyg"
 
     remove_selectors:
-      - ".fbtm"
-      - ".ya-share2"
-      - ".sect"
-      - "aside"
+      - "div.similar-block"
+      - "div.page-article__stat"
+      - "div.date-widget"
+      - "picture"
       - "header"
       - "footer"
       - "nav"
-      - "script"
-      - ".slider"
-
-# ============================================================
-  # khf.tj — Center for Strategic Research under the President
-  # ============================================================
-  khf:
-  khf:
-    match:
-      - "khf.tj"
-      - "www.khf.tj"
-    default_language: "tg"
-    noise_language: ["common", "tg"]
-    start_url: "https://www.khf.tj/node"
-    verify_ssl: true
-
-    rubric_strategy:
-      - "context_passed"
-
-    card_selectors:
-      - "article.node-teaser"
-      - "article.node-article"
-
-    article_link_selectors:
-      - "article.node-teaser h2.title a[href^='/node/']"
-      - "article.node-article h2.title a[href^='/node/']"
-      - "h2.title a[href^='/node/']"
-
-    article_url_regex: "^/node/\\d+/?$"
-
-    article_url_excludes:
-      - "?page="
-      - "%2C"
-      - "/taxonomy/term/"
-      - "/user/"
-      - "/sites/"
-      - "?itok="
-      - "/archive/"
-      - "javascript:"
-      - "^#"
-
-    pagination_selectors:
-      - "#post-content ul.pager li.pager-next a"
-      - "#post-content ul.pager li.pager-last a"
-      - "#post-content ul.pager li.pager-item a"
-      - "#post-content ul.pager li.pager-ellipsis a"
-
-    title_selectors:
-      - "h1.page-title"
-      - "meta[property='og:title']"
-      - "title"
-
-    date_selectors:
-      - "span[property='dc:date dc:created']"
-      - "span.submitted time[datetime]"
-      - "span.submitted"
-      - "meta[property='article:published_time']"
-
-    author_strategy:
-      - "meta_tag"
-      - "json_ld_graph"
-
-    author_selectors:
-      - "meta[name='author']"
-      - "meta[name='Author']"
-      - "meta[property='article:author']"
-
-    author_blacklist:
-      - "admin"
-      - "Admin"
-      - "administrator"
-      - "webmaster"
-      - "editor"
-
-    category_selectors:
-      - "div.field-name-field-tags .field-items a[href^='/taxonomy/term/']"
-      - "div.field-name-field-tags .field-items a"
-
-    category_strategy:
-      - "class_selector"
-      - "url_path_parsing"
-
-    content_selectors:
-      - "div.field-name-body div[property='content:encoded']"
-      - "div[property='content:encoded']"
-      - "div.field-name-body .field-item"
-
-    remove_selectors:
-      - "div.field-name-field-image"
-      - "div.field-name-field-photo-gallery"
-      - "div.field-name-field-tags"
-      - "footer"
-      - ".statistics_counter"
-      - "#main-menu"
-      - "#sidebar-first"
-      - "#sidebar-second"
-      - "#footer"
-      - ".share"
-      - ".social"
-      - ".banner"
+      - "aside"
+      - ".header-desk"
+      - ".mobile-menu-wrap"
+      - ".section--desk-header"
+      - ".section--header"
+      - ".show-more"
       
