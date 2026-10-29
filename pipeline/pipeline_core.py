@@ -32,10 +32,6 @@ from logger_setup import get_file_logger
 logger = get_file_logger("pipeline_core", "logs/pipeline_core.log")
 
 
-# ---------------------------------------------------------------------------
-# Utilities
-# ---------------------------------------------------------------------------
-
 def now_iso() -> str:
     return time.strftime("%Y-%m-%dT%H:%M:%SZ", time.gmtime())
 
@@ -83,7 +79,6 @@ def sha256_hex(text: str, trunc: Optional[int] = 32) -> str:
 
 
 def apply_date_locale(date_str: str, locale_map: Optional[Dict[str, str]]) -> str:
-    """Replace non-standard month names with English equivalents."""
     if not locale_map:
         return date_str
     for src, dst in locale_map.items():
@@ -95,24 +90,20 @@ def parse_datetime_value(
     value: Optional[str],
     locale_map: Optional[Dict[str, str]] = None,
 ) -> Optional[str]:
-    """
-    Parse a date/time string into ISO format.
-
-    ``dayfirst=True`` handles numeric DD.MM.YYYY strings (``05.10.2026``
-    means 5 October, not 10 May); ISO-8601 inputs are parsed identically
-    with or without it. ``ignoretz=True`` suppresses UnknownTimezoneWarning
-    on tokens that look like timezone names but are not (``IV`` on some
-    Tatar pages). Every downstream consumer of this value is date-oriented,
-    so dropping the timezone is lossless.
-
-    Returns the ISO string on success, the original value on parse
-    failure, or ``None`` on empty input.
-    """
     if not value:
         return None
     value = clean_text(value)
     if not value:
         return None
+
+    try:
+        from datetime import datetime
+        iso = value.replace("Z", "+00:00")
+        dt = datetime.fromisoformat(iso)
+        return dt.isoformat()
+    except (ValueError, TypeError):
+        pass
+
     value = apply_date_locale(value, locale_map)
     try:
         dt = dateparser.parse(value, fuzzy=True, ignoretz=True, dayfirst=True)
@@ -121,7 +112,6 @@ def parse_datetime_value(
     except Exception:
         pass
     return value
-
 
 def extract_time_part(value: Optional[str]) -> Optional[str]:
     if not value:
@@ -176,17 +166,6 @@ def uniq_keep_order(items: Iterable[str]) -> List[str]:
 
 
 def _url_passes_article_filters(url: str, site_cfg: Dict[str, Any]) -> bool:
-    """
-    Check an absolute URL against the site's article-URL rules.
-
-    Priority:
-      1. ``article_url_regex`` (if present) — matched against the path
-         first, then against the full URL. Path-first lets patterns such
-         as ``^/tg/\\\\d{4}/...`` work without embedding the host.
-      2. ``article_url_filters`` (substring match against the full URL).
-      3. Built-in defaults (``/news/``, ``/article/``, ``/story/``,
-         ``/post/``, ``/a/``).
-    """
     low = url.lower()
     path = (get_path(url) or "").lower()
 
@@ -204,10 +183,6 @@ def _url_passes_article_filters(url: str, site_cfg: Dict[str, Any]) -> bool:
     return any(x in low for x in ("/news/", "/article/", "/story/", "/post/", "/a/"))
 
 
-# ---------------------------------------------------------------------------
-# Core Engine
-# ---------------------------------------------------------------------------
-
 @dataclass
 class PipelineEngine:
     yaml_path: str = "config/universal.yaml"
@@ -217,10 +192,6 @@ class PipelineEngine:
     def __post_init__(self) -> None:
         if not self.root_cfg:
             self.root_cfg = load_yaml_config(self.yaml_path)
-
-    # -------------------------------------------------
-    # Config helpers
-    # -------------------------------------------------
 
     def global_cfg(self) -> Dict[str, Any]:
         return self.root_cfg.get("global", {}) if isinstance(self.root_cfg, dict) else {}
@@ -245,18 +216,7 @@ class PipelineEngine:
     def use_amp_fallback(self) -> bool:
         return bool(self.global_cfg().get("use_amp_fallback", True))
 
-    # -------------------------------------------------
-    # Date locale support
-    # -------------------------------------------------
-
     def get_date_locale_map(self, url: str) -> Optional[Dict[str, str]]:
-        """
-        Return the month-name map for a site.
-
-        Priority: ``site_cfg.date_locale`` → fallback to
-        ``site_cfg.default_language`` so that a Tajik site without an
-        explicit locale still resolves ``Октябрь`` etc.
-        """
         site_cfg = self.site_cfg(url)
         locale_name = site_cfg.get("date_locale") or site_cfg.get("default_language")
         if not locale_name:
@@ -276,10 +236,6 @@ class PipelineEngine:
                 return result
 
         return None
-
-    # -------------------------------------------------
-    # HTTP session
-    # -------------------------------------------------
 
     def _build_headers_and_cookies(self, url: str) -> Tuple[Dict[str, str], Dict[str, str]]:
         site_cfg = self.site_cfg(url)
@@ -393,10 +349,6 @@ class PipelineEngine:
         except Exception:
             return True
 
-    # -------------------------------------------------
-    # Safe selectors with :contains() support
-    # -------------------------------------------------
-
     def _safe_select(self, soup, css_selector: str) -> List[Tag]:
         if ":contains(" in css_selector:
             match = re.search(r":contains\('([^']*)'\)", css_selector)
@@ -420,10 +372,6 @@ class PipelineEngine:
     def _safe_select_one(self, soup, css_selector: str) -> Optional[Tag]:
         results = self._safe_select(soup, css_selector)
         return results[0] if results else None
-
-    # -------------------------------------------------
-    # Page-type detection
-    # -------------------------------------------------
 
     def detect_page_type(self, soup: BeautifulSoup, url: str) -> str:
         site_cfg = self.site_cfg(url)
@@ -477,9 +425,38 @@ class PipelineEngine:
             best = "listing"
         return best
 
-    # -------------------------------------------------
-    # Pagination
-    # -------------------------------------------------
+    def _is_forward_pagination(self, current_url: str, candidate_url: str) -> bool:
+        cur = urlparse(current_url)
+        cand = urlparse(candidate_url)
+
+        cur_qs = parse_qs(cur.query)
+        cand_qs = parse_qs(cand.query)
+
+        if "page" in cur_qs and "page" in cand_qs:
+            try:
+                return int(cand_qs["page"][0]) > int(cur_qs["page"][0])
+            except (ValueError, IndexError):
+                pass
+        if "p" in cur_qs and "p" in cand_qs:
+            try:
+                return int(cand_qs["p"][0]) > int(cur_qs["p"][0])
+            except (ValueError, IndexError):
+                pass
+
+        cur_m = re.search(r"/page/(\d+)", cur.path)
+        cand_m = re.search(r"/page/(\d+)", cand.path)
+
+        if cur_m and cand_m:
+            return int(cand_m.group(1)) > int(cur_m.group(1))
+        if cur_m and not cand_m:
+            return False
+        if not cur_m and cand_m:
+            try:
+                return int(cand_m.group(1)) > 1
+            except ValueError:
+                return False
+
+        return True
 
     def get_next_page_url(self, soup: BeautifulSoup, current_url: str) -> Optional[str]:
         site_cfg = self.site_cfg(current_url)
@@ -488,38 +465,31 @@ class PipelineEngine:
             try:
                 for el in self._safe_select(soup, sel):
                     href = el.get("href")
-                    if href:
-                        full = abs_url(current_url, href)
-                        if full:
-                            return full
+                    if not href:
+                        continue
+                    full = abs_url(current_url, href)
+                    if full and self._is_forward_pagination(current_url, full):
+                        return full
             except Exception:
                 pass
 
-        next_texts = ["Next", "→", ">"]
+        next_texts = ["Next", "→", ">", "Следующая", "следующая"]
         for a in soup.find_all("a", href=True):
             txt = clean_text(a.get_text(" ", strip=True))
             if txt and any(nt.lower() in txt.lower() for nt in next_texts):
                 full = abs_url(current_url, a.get("href"))
-                if full:
+                if full and self._is_forward_pagination(current_url, full):
                     return full
 
         parsed = urlparse(current_url)
         qs = parse_qs(parsed.query)
-
-        if "p" in qs:
-            try:
-                cur = int(qs["p"][0])
-                qs["p"] = [str(cur + 1)]
-                return urlunparse(parsed._replace(query=urlencode(qs, doseq=True)))
-            except Exception:
-                pass
 
         if "page" in qs:
             try:
                 cur = int(qs["page"][0])
                 qs["page"] = [str(cur + 1)]
                 return urlunparse(parsed._replace(query=urlencode(qs, doseq=True)))
-            except Exception:
+            except (ValueError, IndexError):
                 pass
 
         m = re.search(r"/page/(\d+)", parsed.path)
@@ -528,21 +498,12 @@ class PipelineEngine:
             new_path = re.sub(r"/page/\d+", f"/page/{cur + 1}", parsed.path)
             return urlunparse(parsed._replace(path=new_path))
 
-        if "p" not in qs and "page" not in qs:
-            for a in soup.find_all("a", href=True):
-                href = a.get("href") or ""
-                match = re.search(r"[?&]p=(\d+)", href)
-                if match:
-                    next_num = int(match.group(1)) + 1
-                    new_qs = qs.copy()
-                    new_qs["p"] = [str(next_num)]
-                    return urlunparse(parsed._replace(query=urlencode(new_qs, doseq=True)))
+        if "page" not in qs and not m:
+            base = current_url.rstrip("/")
+            if not base.endswith("/page/1"):
+                return base + "/page/2/"
 
         return None
-
-    # -------------------------------------------------
-    # Rubric collection
-    # -------------------------------------------------
 
     def _rubrics_menu_scraping(self, base_url: str, soup: BeautifulSoup, site_cfg: Dict[str, Any]) -> List[str]:
         out: List[str] = []
@@ -705,9 +666,15 @@ class PipelineEngine:
         site_cfg = self.site_cfg(base_url)
         if site_cfg.get("api_source", {}).get("enabled"):
             return []
+
         strategies = site_cfg.get("rubric_strategy") or self.global_cfg().get(
             "rubric_strategies_order"
         ) or ["menu_scraping"]
+
+        if strategies and strategies[0] == "context_passed":
+            logger.info(f"context_passed -> {base_url} as listing")
+            print(f"[RUBRICS] Found: 1 (context_passed: {base_url})")
+            return [base_url]
 
         try:
             html = self.fetch_html(base_url)
@@ -785,10 +752,6 @@ class PipelineEngine:
             print(f"  ... and {len(uniq)-10} more")
 
         return uniq
-
-    # -------------------------------------------------
-    # Candidate discovery
-    # -------------------------------------------------
 
     def extract_page_meta_stub(self, soup: BeautifulSoup, url: str, site_cfg: Dict[str, Any]) -> Dict[str, Any]:
         title = None
@@ -1004,122 +967,159 @@ class PipelineEngine:
             rubric_links = []
 
         for r in rubric_links:
-            queue.append((r, 1))
+            if r != start_url:
+                queue.append((r, 1))
+
+        m_section = re.match(r"^/(?:[a-z]{2}/)?([^/]+)/?$", urlparse(start_url).path)
+        section_from_start = (
+            m_section.group(1)
+            if m_section and m_section.group(1) not in ("page", "node", "")
+            else None
+        )
 
         logger.info(
             f"Starting crawl: {start_url} "
-            f"(max_pages={max_pages}, max_depth={max_depth}, max_items={max_items})"
+            f"(max_pages={max_pages}, max_depth={max_depth}, max_items={max_items}, "
+            f"section={section_from_start})"
         )
 
-        pbar = tqdm(total=max_pages, desc="[CRAWL] Page traversal",
-                    unit="page", dynamic_ncols=True)
+        def _add_candidate(url: str, payload: Dict[str, Any]) -> bool:
+            if len(discovered) >= max_items:
+                return True
+            if url not in discovered:
+                discovered[url] = payload
+            return len(discovered) >= max_items
 
-        while queue and len(visited_pages) < max_pages and len(discovered) < max_items:
-            current_url, depth = queue.popleft()
-            current_url = urldefrag(current_url)[0]
+        pbar = tqdm(
+            total=max_pages,
+            desc="[CRAWL] Page traversal",
+            unit="page",
+            dynamic_ncols=True,
+        )
 
-            if current_url in visited_pages:
-                continue
-            if depth > max_depth:
-                continue
-            if not is_valid_http_url(current_url):
-                continue
-            if self.domain_only() and not same_domain(start_url, current_url):
-                continue
-            if not self.can_fetch_robots(current_url):
-                continue
+        try:
+            while queue and len(visited_pages) < max_pages and len(discovered) < max_items:
+                current_url, depth = queue.popleft()
+                current_url = urldefrag(current_url)[0]
 
-            visited_pages.add(current_url)
-            pbar.update(1)
-            pbar.set_postfix_str(f"candidates: {len(discovered)}, depth: {depth}")
+                if current_url in visited_pages:
+                    continue
+                if depth > max_depth:
+                    continue
+                if not is_valid_http_url(current_url):
+                    continue
+                if self.domain_only() and not same_domain(start_url, current_url):
+                    continue
+                if not self.can_fetch_robots(current_url):
+                    continue
 
-            site_cfg = self.site_cfg(current_url)
+                visited_pages.add(current_url)
+                pbar.update(1)
+                pbar.set_postfix_str(f"candidates: {len(discovered)}, depth: {depth}")
 
-            try:
-                html = self.fetch_html(current_url)
-            except Exception:
-                continue
+                site_cfg = self.site_cfg(current_url)
 
-            try:
-                soup = BeautifulSoup(html, "html.parser")
-            except Exception:
-                continue
-
-            page_type = self.detect_page_type(soup, current_url)
-            page_meta = self.extract_page_meta_stub(soup, current_url, site_cfg)
-
-            if page_type in ("listing", "unknown"):
                 try:
-                    listing_items = self.extract_listing_items_stub(html, current_url)
+                    html = self.fetch_html(current_url)
                 except Exception:
-                    listing_items = []
-                for item in listing_items:
-                    u = item.get("url")
-                    if u and u not in discovered:
-                        discovered[u] = item
-
-            excludes = site_cfg.get("article_url_excludes", []) or []
-
-            for a in soup.find_all("a", href=True):
-                href = abs_url(current_url, a.get("href"))
-                if not href:
-                    continue
-                if self.domain_only() and not same_domain(start_url, href):
-                    continue
-                if is_noise_url(href):
                     continue
 
-                low = href.lower()
-                if excludes and any(x.lower() in low for x in excludes):
+                try:
+                    soup = BeautifulSoup(html, "html.parser")
+                except Exception:
                     continue
 
-                txt = clean_text(a.get_text(" ", strip=True))
-                if is_noise_text(txt, site_cfg.get("_noise_words", [])):
-                    continue
+                page_type = self.detect_page_type(soup, current_url)
+                page_meta = self.extract_page_meta_stub(soup, current_url, site_cfg)
 
-                if _url_passes_article_filters(href, site_cfg) and href not in discovered:
-                    discovered[href] = {
-                        "url": href,
-                        "title": txt or page_meta.get("title"),
-                        "content": txt or page_meta.get("title"),
-                        "date": page_meta.get("date"),
-                        "author": page_meta.get("author"),
-                        "category": page_meta.get("category"),
-                        "time": extract_time_part(page_meta.get("date") or txt),
-                        "site": get_domain(href),
-                        "hash": sha256_hex((txt or "") + "|" + href, trunc=32),
-                        "scraped_at": now_iso(),
-                        "source_page": current_url,
-                        "page_type": "article_candidate",
-                    }
+                if page_type in ("listing", "unknown"):
+                    try:
+                        listing_items = self.extract_listing_items_stub(html, current_url)
+                    except Exception:
+                        listing_items = []
+                    for item in listing_items:
+                        if section_from_start and not item.get("category"):
+                            item["category"] = section_from_start
+                        u = item.get("url")
+                        if not u:
+                            continue
+                        if _add_candidate(u, item):
+                            break
 
-            next_url = self.get_next_page_url(soup, current_url)
-            if next_url and next_url not in visited_pages:
-                queue.append((next_url, depth))
+                if len(discovered) >= max_items:
+                    break
 
-            for a in soup.find_all("a", href=True):
-                href = abs_url(current_url, a.get("href"))
-                if not href:
-                    continue
-                if self.domain_only() and not same_domain(start_url, href):
-                    continue
-                if is_noise_url(href):
-                    continue
-                if href in visited_pages:
-                    continue
+                excludes = site_cfg.get("article_url_excludes", []) or []
 
-                low = href.lower()
-                is_rubricish = any(x in low for x in ["/rubric/", "/category/", "/tag/", "/section/", "/archive/"])
-                if is_rubricish and href not in [u for u, _ in queue]:
-                    queue.append((href, depth))
+                for a in soup.find_all("a", href=True):
+                    href = abs_url(current_url, a.get("href"))
+                    if not href:
+                        continue
+                    if self.domain_only() and not same_domain(start_url, href):
+                        continue
+                    if is_noise_url(href):
+                        continue
 
-            delay = random.uniform(
-                float(self.request_cfg().get("default_delay_seconds", 1.2)),
-                float(self.request_cfg().get("default_delay_seconds", 1.2)) + 0.8,
-            )
-            time.sleep(delay)
+                    low = href.lower()
+                    if excludes and any(x.lower() in low for x in excludes):
+                        continue
 
-        pbar.close()
+                    txt = clean_text(a.get_text(" ", strip=True))
+                    if is_noise_text(txt, site_cfg.get("_noise_words", [])):
+                        continue
+
+                    if _url_passes_article_filters(href, site_cfg):
+                        payload = {
+                            "url": href,
+                            "title": txt or page_meta.get("title"),
+                            "content": txt or page_meta.get("title"),
+                            "date": page_meta.get("date"),
+                            "author": page_meta.get("author"),
+                            "category": page_meta.get("category") or section_from_start,
+                            "time": extract_time_part(page_meta.get("date") or txt),
+                            "site": get_domain(href),
+                            "hash": sha256_hex((txt or "") + "|" + href, trunc=32),
+                            "scraped_at": now_iso(),
+                            "source_page": current_url,
+                            "page_type": "article_candidate",
+                        }
+                        if _add_candidate(href, payload):
+                            break
+
+                if len(discovered) >= max_items:
+                    break
+
+                next_url = self.get_next_page_url(soup, current_url)
+                if next_url and next_url not in visited_pages:
+                    queue.append((next_url, depth))
+
+                for a in soup.find_all("a", href=True):
+                    href = abs_url(current_url, a.get("href"))
+                    if not href:
+                        continue
+                    if self.domain_only() and not same_domain(start_url, href):
+                        continue
+                    if is_noise_url(href):
+                        continue
+                    if href in visited_pages:
+                        continue
+
+                    low = href.lower()
+                    is_rubricish = any(
+                        x in low
+                        for x in ("/rubric/", "/category/", "/tag/", "/section/", "/archive/")
+                    )
+                    if is_rubricish and href not in [u for u, _ in queue]:
+                        queue.append((href, depth))
+
+                delay = random.uniform(
+                    float(self.request_cfg().get("default_delay_seconds", 1.2)),
+                    float(self.request_cfg().get("default_delay_seconds", 1.2)) + 0.8,
+                )
+                time.sleep(delay)
+        finally:
+            pbar.close()
+
         logger.info(f"Crawl finished: {len(discovered)} candidates found")
         return discovered
 
@@ -1173,10 +1173,6 @@ class PipelineEngine:
 
         logger.info(f"API crawl finished: {len(discovered)} candidates")
         return discovered
-
-    # -------------------------------------------------
-    # Convenience API
-    # -------------------------------------------------
 
     def discover(self, start_url: str, context_rubrics: Optional[Iterable[str]] = None) -> Dict[str, Dict[str, Any]]:
         return self.detect_page_candidates(start_url, context_rubrics=context_rubrics)
@@ -1251,10 +1247,6 @@ class PipelineEngine:
         endpoint = api_cfg["list_endpoint"].format(page=page)
         return base + endpoint if endpoint.startswith("/") else base + "/" + endpoint
 
-
-# ---------------------------------------------------------------------------
-# Smoke test
-# ---------------------------------------------------------------------------
 
 if __name__ == "__main__":
     yaml_path = "config/universal.yaml"

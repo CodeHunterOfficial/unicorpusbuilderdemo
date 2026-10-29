@@ -20,10 +20,6 @@ logger = get_file_logger("loader", "logs/loader.log")
 _PROJECT_ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 _DEFAULT_SOCIAL_CONFIG = os.path.join(_PROJECT_ROOT, "social", "config", "social.yaml")
 
-# Ordered selector chains. The first non-empty value wins during extraction,
-# so site-specific selectors must come before defaults. deep_merge() appends
-# override lists after base lists, which is correct for union-style fields
-# (noise words, URL excludes) but wrong for these ordered chains.
 _ORDERED_SELECTOR_FIELDS = (
     "content_selectors",
     "author_selectors",
@@ -39,12 +35,15 @@ _ORDERED_SELECTOR_FIELDS = (
 )
 
 
+_STRATEGY_FIELDS = ("rubric_strategy", "author_strategy", "category_strategy")
+
+
 # ---------------------------------------------------------------------------
 # Utilities
 # ---------------------------------------------------------------------------
 
 def deep_merge(base: Dict[str, Any], override: Dict[str, Any]) -> Dict[str, Any]:
-    """Deep merge two dicts; lists are concatenated, not replaced."""
+    """Deep merge two dicts. Lists are concatenated, scalars replaced."""
     result = copy.deepcopy(base) if base else {}
     if not override:
         return result
@@ -62,7 +61,7 @@ def deep_merge(base: Dict[str, Any], override: Dict[str, Any]) -> Dict[str, Any]
 
 
 def clean_list(value: Any) -> list:
-    """Convert any value to a list."""
+    """Coerce any value into a list."""
     if value is None:
         return []
     if isinstance(value, list):
@@ -101,18 +100,23 @@ def _prioritize_site_selectors(
     default_profile: Dict[str, Any],
 ) -> Dict[str, Any]:
     """
-    Put site-specific selectors before defaults for ordered chains.
+    Apply site overrides to ordered chains.
 
-    Only invoked when the site defines its own list. For fields the site
-    does not override, the merged value is left as produced by deep_merge.
-    Duplicates are removed while preserving the site-then-default order.
+    Selectors: site entries first, defaults after, duplicates removed.
+    Strategies: site entries replace the default chain entirely.
     """
-    for field in _ORDERED_SELECTOR_FIELDS:
-        site_list = list(site_cfg.get(field) or [])
+    for field_name in _ORDERED_SELECTOR_FIELDS:
+        site_list = list(site_cfg.get(field_name) or [])
         if not site_list:
             continue
-        default_list = list(default_profile.get(field) or [])
-        merged[field] = list(dict.fromkeys(site_list + default_list))
+        default_list = list(default_profile.get(field_name) or [])
+        merged[field_name] = list(dict.fromkeys(site_list + default_list))
+
+    for field_name in _STRATEGY_FIELDS:
+        site_list = list(site_cfg.get(field_name) or [])
+        if site_list:
+            merged[field_name] = site_list
+
     return merged
 
 
@@ -132,10 +136,8 @@ def normalize_text_rules(text_rules: Optional[Dict[str, Any]]) -> Dict[str, Any]
 
     if "stopwords" in normalized and isinstance(normalized["stopwords"], dict):
         sw = normalized["stopwords"]
-        if "enabled" not in sw:
-            sw["enabled"] = False
-        if "per_language" not in sw:
-            sw["per_language"] = True
+        sw.setdefault("enabled", False)
+        sw.setdefault("per_language", True)
         for key in list(sw.keys()):
             if key not in ("enabled", "per_language"):
                 sw[key] = clean_list(sw.get(key))
@@ -149,9 +151,9 @@ def normalize_text_rules(text_rules: Optional[Dict[str, Any]]) -> Dict[str, Any]
         f.setdefault("deduplicate_lines", True)
 
     if "patterns" in normalized and isinstance(normalized["patterns"], dict):
-        for k in ("ui_patterns", "ad_patterns"):
-            if k in normalized["patterns"]:
-                normalized["patterns"][k] = clean_list(normalized["patterns"][k])
+        for key in ("ui_patterns", "ad_patterns"):
+            if key in normalized["patterns"]:
+                normalized["patterns"][key] = clean_list(normalized["patterns"][key])
 
     if "language_detection" in normalized and isinstance(normalized["language_detection"], dict):
         ld = normalized["language_detection"]
@@ -182,22 +184,21 @@ def normalize_profile(profile: Optional[Dict[str, Any]]) -> Dict[str, Any]:
     profile.setdefault("api_source", {})
     profile.setdefault("noise_language", ["common", "ru"])
 
-    for key in [
+    for key in (
         "rubric_selectors", "card_selectors", "article_link_selectors",
         "pagination_selectors", "title_selectors", "date_selectors",
         "author_selectors", "category_selectors", "image_selectors",
         "content_selectors", "remove_selectors",
         "article_url_filters", "article_url_excludes",
-    ]:
+    ):
         profile[key] = clean_list(profile.get(key))
 
-    for key in ["rubric_strategy", "author_strategy", "category_strategy", "card_exclude_classes"]:
+    for key in ("rubric_strategy", "author_strategy", "category_strategy", "card_exclude_classes"):
         if key in profile:
             profile[key] = clean_list(profile[key])
         else:
             profile.pop(key, None)
 
-    # article_url_regex is a single optional regex, not a list.
     regex = profile.get("article_url_regex")
     profile["article_url_regex"] = (
         regex.strip() if isinstance(regex, str) and regex.strip() else None
@@ -255,8 +256,8 @@ def normalize_config(config: Dict[str, Any]) -> Dict[str, Any]:
     if not isinstance(global_cfg.get("url_rules"), dict):
         global_cfg["url_rules"] = {}
     url_rules = global_cfg["url_rules"]
-    for k in ("article_url_filters_default", "article_url_excludes_default", "noise_url_parts"):
-        url_rules[k] = clean_list(url_rules.get(k))
+    for key in ("article_url_filters_default", "article_url_excludes_default", "noise_url_parts"):
+        url_rules[key] = clean_list(url_rules.get(key))
 
     if not isinstance(global_cfg.get("content_cleanup"), dict):
         global_cfg["content_cleanup"] = {}
@@ -267,12 +268,12 @@ def normalize_config(config: Dict[str, Any]) -> Dict[str, Any]:
     if not isinstance(global_cfg.get("meta_extraction"), dict):
         global_cfg["meta_extraction"] = {}
     meta = global_cfg["meta_extraction"]
-    for k in (
+    for key in (
         "title_selectors_default", "date_selectors_default",
         "author_selectors_default", "category_selectors_default",
         "image_selectors_default",
     ):
-        meta[k] = clean_list(meta.get(k))
+        meta[key] = clean_list(meta.get(key))
 
     global_cfg["text_rules"] = normalize_text_rules(global_cfg.get("text_rules", {}))
 
@@ -297,7 +298,7 @@ def normalize_config(config: Dict[str, Any]) -> Dict[str, Any]:
 # ---------------------------------------------------------------------------
 
 def get_site_key(url: str, config: Dict[str, Any]) -> str:
-    """Return the site key with the longest match for the URL domain."""
+    """Return the site key with the longest matching domain."""
     domain = safe_domain(url)
     if not domain:
         return "default"
@@ -350,7 +351,7 @@ def resolve_auto_family(
 
 
 # ---------------------------------------------------------------------------
-# Resolution of language-dependent data
+# Language-dependent resolution
 # ---------------------------------------------------------------------------
 
 def resolve_noise_words(site_cfg: Dict[str, Any], config: Dict[str, Any]) -> List[str]:
@@ -418,8 +419,6 @@ def get_site_config(
         )
         if family_profile:
             merged = deep_merge(merged, family_profile)
-            # The family profile was selected because no site profile matched,
-            # so its selectors should come before the global defaults.
             merged = _prioritize_site_selectors(merged, family_profile, default_profile)
 
     if merged.get("verify_ssl") is None:
@@ -477,7 +476,7 @@ def load_config(path: str) -> Dict[str, Any]:
 
 
 def load_modular_config(universal_path: str) -> Dict[str, Any]:
-    """Load universal.yaml plus the files listed under 'includes'."""
+    """Load universal.yaml plus every file listed under 'includes'."""
     if not os.path.exists(universal_path):
         raise FileNotFoundError(f"Universal config not found: {universal_path}")
 
@@ -516,7 +515,7 @@ def load_modular_config(universal_path: str) -> Dict[str, Any]:
 
 @dataclass
 class ConfigLoader:
-    """Reusable loader — auto-detects monolithic vs modular YAML."""
+    """Reusable loader. Auto-detects monolithic vs modular YAML."""
 
     path: str
     config: Dict[str, Any] = field(default_factory=dict)
@@ -570,7 +569,7 @@ def load_social_config(path: Optional[str] = None) -> Dict[str, Any]:
     Load the modular social-media config.
 
     Resolution order:
-      1. explicit ``path`` argument
+      1. explicit path argument
       2. SOCIAL_CONFIG_PATH environment variable
       3. <project_root>/social/config/social.yaml
     """
@@ -649,4 +648,3 @@ if __name__ == "__main__":
             print(f"  author_regex: {len(pkg['author_regex'])} patterns")
         if pkg.get("category_url_patterns"):
             print(f"  category_url_patterns: {len(pkg['category_url_patterns'])} patterns")
-            

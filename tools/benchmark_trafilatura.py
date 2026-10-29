@@ -9,6 +9,33 @@ Compared fields
 Body-extraction quality is scored against a gold text using ROUGE-1,
 ROUGE-L, word-level precision/recall/F1, and length ratio.
 
+Reproducibility
+---------------
+The first discovery run writes ``trafilatura_comparison_baseline.csv``
+with the exact URL, site and language triplets. Every subsequent run
+replays the same documents with::
+
+    python tools/benchmark_trafilatura.py \\
+        --url-file trafilatura_comparison_baseline.csv
+
+Without ``--url-file`` the tool rediscovers URLs, which can yield a
+different sample and breaks cross-run comparisons. Use ``--baseline``
+to control where the snapshot is written.
+
+Category reporting
+------------------
+Two numbers are printed for category coverage:
+
+  * ``raw``        — any non-empty value after ``_clean_probe_value``
+                     rejects JSON blobs;
+  * ``post-filter`` — the value survived ``_acceptable_category``, so
+                     dates, generic labels and URL slugs are excluded.
+
+The post-filter number is the one comparable with Trafilatura's
+``categories`` field and the one quoted as "category extracted" in the
+article. ``_acceptable_category`` is the same function used in
+``tools/strategy_hitrate.py`` and mirrors the pipeline guard.
+
 ROUGE tokenizer
 ---------------
 ``rouge_score.RougeScorer`` accepts a ``tokenizer`` object and calls
@@ -32,9 +59,10 @@ Category guard
 ``_acceptable_category`` mirrors the guard in
 ``pipeline_extraction.ExtractionEngine.extract_category``: serialized
 JSON-LD blobs (leading ``{`` / ``[``, or embedding ``@context`` /
-``@type``) and over-long strings are rejected. The same guard is
-applied to both UCB and Trafilatura so that a JSON-LD breadcrumb blob
-is never counted as a successful category extraction.
+``@type``), over-long strings, generic section labels, dates and URL
+slugs are rejected. The same guard is applied to both UCB and
+Trafilatura so that a JSON-LD breadcrumb blob or a date string is
+never counted as a successful category extraction.
 
 Trafilatura API
 ---------------
@@ -46,7 +74,7 @@ future minor version.
 
 Output
 ------
-    trafilatura_comparison.csv   one row per URL
+    trafilatura_comparison.csv   one row per URL, with ``included``
     trafilatura_coverage.csv     aggregate per site
 
 Parent directories of both output files are created automatically.
@@ -60,6 +88,8 @@ Usage
     python tools/benchmark_trafilatura.py
     python tools/benchmark_trafilatura.py --sites-per-lang 2 --articles-per-site 20
     python tools/benchmark_trafilatura.py --exclude sssr ozodi
+    python tools/benchmark_trafilatura.py --sites khovar tatar-inform vatantat akbuzat yanshishma iryston
+    python tools/benchmark_trafilatura.py --url-file trafilatura_comparison_baseline.csv
 """
 from __future__ import annotations
 
@@ -249,29 +279,30 @@ def year_month(iso_date: Optional[str]) -> Optional[str]:
     """Return ``YYYY-MM`` from an ISO date, or None."""
     return iso_date[:7] if iso_date else None
 
+
 _GENERIC_CATEGORY_LABELS = frozenset({
-    'главная', 'главная страница', 'home', 'main', 'index', 'начало',
-    'новости', 'новость', 'news', 'novosti',
-    'common_material', 'common materials', 'материалы', 'статьи',
-    'фото', 'photo', 'видео', 'video',
-    'архив', 'archive',
-    'разное', 'other', 'прочее',
-    'рубрика', 'категория', 'раздел', 'тег', 'tag', 'rubric', 'category',
+    "главная", "главная страница", "home", "main", "index", "начало",
+    "новости", "новость", "news", "novosti",
+    "common_material", "common materials", "материалы", "статьи",
+    "фото", "photo", "видео", "video",
+    "архив", "archive",
+    "разное", "other", "прочее",
+    "рубрика", "категория", "раздел", "тег", "tag", "rubric", "category",
 })
 
 _CAT_MONTHS = (
-    r'январ\w*|феврал\w*|март\w*|апрел\w*|ма[йя]|июн\w*|июл\w*|'
-    r'август\w*|сентябр\w*|октябр\w*|ноябр\w*|декабр\w*|'
-    r'january|february|march|april|may|june|july|august|september|'
-    r'october|november|december'
+    r"январ\w*|феврал\w*|март\w*|апрел\w*|ма[йя]|июн\w*|июл\w*|"
+    r"август\w*|сентябр\w*|октябр\w*|ноябр\w*|декабр\w*|"
+    r"january|february|march|april|may|june|july|august|september|"
+    r"october|november|december"
 )
 
 _DATE_ONLY_CAT_RE = re.compile(
-    rf'^\d{{1,2}}\s+(?:{_CAT_MONTHS})\s+\d{{4}}(?:,?\s+\d{{1,2}}:\d{{2}})?$',
+    rf"^\d{{1,2}}\s+(?:{_CAT_MONTHS})\s+\d{{4}}(?:,?\s+\d{{1,2}}:\d{{2}})?$",
     re.IGNORECASE,
 )
 _DATE_EMBEDDED_CAT_RE = re.compile(
-    rf'\d{{1,2}}\s+(?:{_CAT_MONTHS})',
+    rf"\d{{1,2}}\s+(?:{_CAT_MONTHS})",
     re.IGNORECASE,
 )
 
@@ -281,6 +312,14 @@ def _acceptable_category(value: Optional[str]) -> Optional[str]:
 
     Тот же фильтр, что в pipeline/pipeline_extraction.py — чтобы
     UCB и Trafilatura фильтровались одинаково.
+
+    Rejections:
+      * JSON-LD blobs (leading ``{``/``[``, or ``@context``/``@type``);
+      * strings longer than 120 characters;
+      * generic section labels (``главная``, ``новости``, ``common_material``);
+      * date strings (``24 октября 2026``, ``2026-10-24``);
+      * URL slugs — no spaces, contains ``-``, all lowercase
+        (``khaly-izhady``, ``ilham-akyattar``).
     """
     if not value:
         return None
@@ -302,9 +341,9 @@ def _acceptable_category(value: Optional[str]) -> Optional[str]:
         return None
     if _DATE_EMBEDDED_CAT_RE.search(text):
         return None
-    if ' ' not in text and text.count('-') >= 2:
+    if " " not in text and "-" in text and text == text.lower():
         return None
-    if re.fullmatch(r'[a-z]{3,}', text):
+    if re.fullmatch(r"[a-z]{3,}", text):
         return None
 
     return text
@@ -317,6 +356,17 @@ def _trafilatura_field(meta: Any, name: str) -> Any:
     if isinstance(meta, dict):
         return meta.get(name)
     return getattr(meta, name, None)
+
+
+def _trafilatura_raw_category(meta: Any) -> Optional[str]:
+    """Return the first raw ``categories`` entry, unfiltered."""
+    raw = _trafilatura_field(meta, "categories")
+    if isinstance(raw, str):
+        return raw.strip() or None
+    if isinstance(raw, (list, tuple)) and raw:
+        first = str(raw[0]).strip()
+        return first or None
+    return None
 
 
 def _trafilatura_category(meta: Any) -> Optional[str]:
@@ -519,6 +569,11 @@ def content_metrics(prediction: Optional[str], gold: Optional[str]) -> dict[str,
 
     return out
 
+
+# ---------------------------------------------------------------------------
+# URL collection
+# ---------------------------------------------------------------------------
+
 def gather_from_config(
     engine: ExtractionEngine,
     langs: list[str],
@@ -576,6 +631,51 @@ def gather_from_config(
             print(f"    -> {len(site_urls)} URLs")
     return urls
 
+
+def load_urls_from_csv(path: str) -> list[dict[str, str]]:
+    """Load a fixed URL list from CSV (see --url-file).
+
+    Accepts a CSV with ``url``, ``site`` and ``lang`` columns. Rows with
+    an empty ``url`` or ``site`` or ``lang`` are skipped, as are rows
+    whose ``included`` column is explicitly ``False``.
+    """
+    if not os.path.exists(path):
+        raise FileNotFoundError(f"URL file not found: {path}")
+    rows: list[dict[str, str]] = []
+    with open(path, encoding="utf-8", newline="") as handle:
+        reader = csv.DictReader(handle)
+        for r in reader:
+            url = (r.get("url") or "").strip()
+            site = (r.get("site") or "").strip()
+            lang = (r.get("lang") or "").strip()
+            if not (url and site and lang):
+                continue
+            included = (r.get("included") or "").strip().lower()
+            if included in ("false", "0", "no"):
+                continue
+            rows.append({"url": url, "site": site, "lang": lang})
+    return rows
+
+
+def save_baseline(urls: list[dict[str, str]], path: str) -> None:
+    """Write the discovery URL list to ``path`` if the file does not exist.
+
+    Preserves an existing baseline so that a later discovery run does
+    not silently replace the reference sample.
+    """
+    if os.path.exists(path):
+        print(f"[BASELINE] {path} exists; not overwriting (delete to refresh)")
+        return
+    _ensure_parent_dir(path)
+    with open(path, "w", encoding="utf-8", newline="") as handle:
+        writer = csv.writer(handle)
+        writer.writerow(["url", "site", "lang"])
+        for entry in urls:
+            writer.writerow([entry["url"], entry["site"], entry["lang"]])
+    print(f"[BASELINE] Saved {len(urls)} URLs to {path}")
+    print(f"           Future runs: --url-file {path}")
+
+
 # ---------------------------------------------------------------------------
 # Per-URL comparison
 # ---------------------------------------------------------------------------
@@ -597,12 +697,14 @@ def compare_one(engine: ExtractionEngine, article: dict[str, str]) -> dict[str, 
         "ucb_date": None,
         "ucb_author": None,
         "ucb_title": None,
+        "ucb_category_raw": None,
         "ucb_category": None,
         "ucb_content_len": 0,
         # Trafilatura
         "traf_date": None,
         "traf_author": None,
         "traf_title": None,
+        "traf_category_raw": None,
         "traf_category": None,
         "traf_content_len": 0,
         # Gold body
@@ -621,6 +723,8 @@ def compare_one(engine: ExtractionEngine, article: dict[str, str]) -> dict[str, 
         "traf_word_f1": None,
         "traf_rouge_1_f1": None,
         "traf_rouge_l_f1": None,
+        # Reproducibility flag
+        "included": False,
     }
 
     try:
@@ -649,6 +753,7 @@ def compare_one(engine: ExtractionEngine, article: dict[str, str]) -> dict[str, 
         result["ucb_date"] = normalize_date(data.get("date"))
         result["ucb_author"] = data.get("author")
         result["ucb_title"] = data.get("title")
+        result["ucb_category_raw"] = data.get("category")
         result["ucb_category"] = _acceptable_category(data.get("category"))
         ucb_content = data.get("content") or ""
         result["ucb_content_len"] = len(ucb_content)
@@ -663,6 +768,7 @@ def compare_one(engine: ExtractionEngine, article: dict[str, str]) -> dict[str, 
             result["traf_date"] = normalize_date(_trafilatura_field(meta, "date"))
             result["traf_author"] = _trafilatura_field(meta, "author")
             result["traf_title"] = _trafilatura_field(meta, "title")
+            result["traf_category_raw"] = _trafilatura_raw_category(meta)
             result["traf_category"] = _trafilatura_category(meta)
     except Exception as exc:
         logger.warning("Trafilatura metadata failed for %s: %s", url, exc)
@@ -703,6 +809,7 @@ def compare_one(engine: ExtractionEngine, article: dict[str, str]) -> dict[str, 
     result["traf_rouge_1_f1"] = traf_metrics["rouge_1_f1"]
     result["traf_rouge_l_f1"] = traf_metrics["rouge_l_f1"]
 
+    result["included"] = not bool(result["error"])
     return result
 
 
@@ -710,8 +817,15 @@ def compare_one(engine: ExtractionEngine, article: dict[str, str]) -> dict[str, 
 # Aggregation
 # ---------------------------------------------------------------------------
 
-def evaluate(results: list[dict[str, Any]]) -> tuple[dict[str, Any], dict[str, dict[str, Any]], dict[str, dict[str, Any]]]:
-    """Aggregate per-URL results into global, per-site and per-language views."""
+def evaluate(
+    results: list[dict[str, Any]],
+) -> tuple[dict[str, Any], dict[str, dict[str, Any]], dict[str, dict[str, Any]]]:
+    """Aggregate per-URL results into global, per-site and per-language views.
+
+    Rows with ``error`` are excluded from every numerator and from the
+    denominator ``ev["total"]``, so the reported percentages match the
+    ``included`` rows only.
+    """
     ev: dict[str, Any] = {
         "total": 0,
         "errors": 0,
@@ -746,6 +860,8 @@ def evaluate(results: list[dict[str, Any]]) -> tuple[dict[str, Any], dict[str, d
         "traf_has_title": 0,
         "ucb_has_date": 0,
         "traf_has_date": 0,
+        "ucb_has_category_raw": 0,
+        "traf_has_category_raw": 0,
         "ucb_has_category": 0,
         "traf_has_category": 0,
         # Body length
@@ -776,6 +892,8 @@ def evaluate(results: list[dict[str, Any]]) -> tuple[dict[str, Any], dict[str, d
             "traf_title": 0,
             "ucb_date": 0,
             "traf_date": 0,
+            "ucb_category_raw": 0,
+            "traf_category_raw": 0,
             "ucb_category": 0,
             "traf_category": 0,
             "ucb_rouge_l": [],
@@ -865,7 +983,7 @@ def evaluate(results: list[dict[str, Any]]) -> tuple[dict[str, Any], dict[str, d
             if row["traf_title"] and ref[:30].lower() in row["traf_title"].lower():
                 ev["traf_title_ok"] += 1
 
-        # Coverage
+        # Coverage — category is tracked at two levels
         ucb_category_ok = _acceptable_category(row["ucb_category"]) is not None
         traf_category_ok = _acceptable_category(row["traf_category"]) is not None
 
@@ -881,6 +999,10 @@ def evaluate(results: list[dict[str, Any]]) -> tuple[dict[str, Any], dict[str, d
             ev["ucb_has_date"] += 1
         if row["traf_date"]:
             ev["traf_has_date"] += 1
+        if row["ucb_category_raw"]:
+            ev["ucb_has_category_raw"] += 1
+        if row["traf_category_raw"]:
+            ev["traf_has_category_raw"] += 1
         if ucb_category_ok:
             ev["ucb_has_category"] += 1
         if traf_category_ok:
@@ -899,6 +1021,10 @@ def evaluate(results: list[dict[str, Any]]) -> tuple[dict[str, Any], dict[str, d
             cov[site]["ucb_date"] += 1
         if row["traf_date"]:
             cov[site]["traf_date"] += 1
+        if row["ucb_category_raw"]:
+            cov[site]["ucb_category_raw"] += 1
+        if row["traf_category_raw"]:
+            cov[site]["traf_category_raw"] += 1
         if ucb_category_ok:
             cov[site]["ucb_category"] += 1
         if traf_category_ok:
@@ -985,8 +1111,10 @@ def print_report(
     out_cov: str,
 ) -> None:
     """Print all comparison tables and write both CSVs."""
+    planned = len(results)
     print(f"\n{'=' * 70}")
-    print(f"Documents processed: {ev['total']}, errors: {ev['errors']}")
+    print(f"[N] planned={planned}  errors={ev['errors']}  "
+          f"used_in_metrics={ev['total']}")
     print(f"{'=' * 70}")
 
     total = ev["total"]
@@ -1036,10 +1164,12 @@ def print_report(
     print(f"  UniCorpusBuilder:  {pct(ev['ucb_has_title'], total)}")
     print(f"  Trafilatura:       {pct(ev['traf_has_title'], total)}")
 
-    # Category
+    # Category — raw and post-filter
     print("\n[CATEGORY extracted]")
-    print(f"  UniCorpusBuilder:  {pct(ev['ucb_has_category'], total)}")
-    print(f"  Trafilatura:       {pct(ev['traf_has_category'], total)}")
+    print(f"  UniCorpusBuilder:  post-filter {pct(ev['ucb_has_category'], total)}"
+          f"  (raw: {pct(ev['ucb_has_category_raw'], total)})")
+    print(f"  Trafilatura:       post-filter {pct(ev['traf_has_category'], total)}"
+          f"  (raw: {pct(ev['traf_has_category_raw'], total)})")
 
     # Body length
     if ev["ucb_len"]:
@@ -1097,10 +1227,10 @@ def print_report(
     print(f"{'=' * 70}")
     print(
         f"  {'Site':<18} {'N':>4} {'AuthU':>6} {'AuthT':>6} "
-        f"{'CatU':>6} {'CatT':>6} {'RL U':>6} {'RL T':>6} "
-        f"{'WF1 U':>6} {'WF1 T':>6}"
+        f"{'CatU':>6} {'CatT':>6} {'CatRawU':>8} {'CatRawT':>8} "
+        f"{'RL U':>6} {'RL T':>6} {'WF1 U':>6} {'WF1 T':>6}"
     )
-    print("  " + "-" * 82)
+    print("  " + "-" * 100)
 
     cov_rows: list[dict[str, Any]] = []
     for site in sorted(cov):
@@ -1125,6 +1255,8 @@ def print_report(
             f"{entry['traf_author'] / site_total * 100:>5.1f}% "
             f"{entry['ucb_category'] / site_total * 100:>5.1f}% "
             f"{entry['traf_category'] / site_total * 100:>5.1f}% "
+            f"{entry['ucb_category_raw'] / site_total * 100:>7.1f}% "
+            f"{entry['traf_category_raw'] / site_total * 100:>7.1f}% "
             f"{rl_u:>6} {rl_t:>6} {wf_u:>6} {wf_t:>6}"
         )
 
@@ -1140,6 +1272,12 @@ def print_report(
                 "traf_title_pct": round(entry["traf_title"] / site_total * 100, 1),
                 "ucb_category_pct": round(entry["ucb_category"] / site_total * 100, 1),
                 "traf_category_pct": round(entry["traf_category"] / site_total * 100, 1),
+                "ucb_category_raw_pct": round(
+                    entry["ucb_category_raw"] / site_total * 100, 1
+                ),
+                "traf_category_raw_pct": round(
+                    entry["traf_category_raw"] / site_total * 100, 1
+                ),
                 "ucb_rouge_l_mean": round(rouge_ucb["mean"], 4) if rouge_ucb else None,
                 "traf_rouge_l_mean": round(rouge_traf["mean"], 4) if rouge_traf else None,
                 "ucb_word_f1_mean": round(word_ucb["mean"], 4) if word_ucb else None,
@@ -1211,7 +1349,12 @@ def print_report(
             f"{ev['traf_url_ok'] / ev['total_url_date'] * 100:>13.1f}%"
         )
     print(
-        f"  {'Category extracted':<40} "
+        f"  {'Category raw':<40} "
+        f"{ev['ucb_has_category_raw'] / total * 100:>17.1f}% "
+        f"{ev['traf_has_category_raw'] / total * 100:>13.1f}%"
+    )
+    print(
+        f"  {'Category post-filter':<40} "
         f"{ev['ucb_has_category'] / total * 100:>17.1f}% "
         f"{ev['traf_has_category'] / total * 100:>13.1f}%"
     )
@@ -1282,6 +1425,7 @@ def print_report(
                 "ucb_date_pct", "traf_date_pct",
                 "ucb_title_pct", "traf_title_pct",
                 "ucb_category_pct", "traf_category_pct",
+                "ucb_category_raw_pct", "traf_category_raw_pct",
                 "ucb_rouge_l_mean", "traf_rouge_l_mean",
                 "ucb_rouge_l_n", "traf_rouge_l_n",
                 "ucb_word_f1_mean", "traf_word_f1_mean",
@@ -1305,8 +1449,11 @@ def _write_per_url_csv(results: list[dict[str, Any]], path: str) -> None:
         logger.warning("No per-URL results to write to %s", path)
         return
     _ensure_parent_dir(path)
+    fieldnames = list(results[0].keys())
+    if "included" not in fieldnames:
+        fieldnames.append("included")
     with open(path, "w", encoding="utf-8", newline="") as handle:
-        writer = csv.DictWriter(handle, fieldnames=list(results[0].keys()))
+        writer = csv.DictWriter(handle, fieldnames=fieldnames, extrasaction="ignore")
         writer.writeheader()
         writer.writerows(results)
 
@@ -1332,26 +1479,43 @@ def main(argv: Optional[list[str]] = None) -> int:
         "--sites", nargs="+", default=None,
         help="Explicit site keys (overrides --sites-per-lang)",
     )
+    parser.add_argument(
+        "--url-file", default=None,
+        help="CSV with url,site,lang columns; skips discovery for reproducibility",
+    )
+    parser.add_argument(
+        "--baseline", default="trafilatura_comparison_baseline.csv",
+        help="Baseline URL snapshot saved on the first discovery run",
+    )
 
     args = parser.parse_args(argv)
 
     engine = ExtractionEngine(yaml_path=args.config)
 
-    print(
-        f"[MODE] Languages={args.langs}, "
-        f"{args.sites_per_lang} sites/language, "
-        f"{args.articles_per_site} articles/site"
-    )
+    if args.url_file:
+        print(f"[MODE] Using fixed URL list: {args.url_file}")
+        try:
+            urls = load_urls_from_csv(args.url_file)
+        except FileNotFoundError as exc:
+            print(f"[ERROR] {exc}")
+            return 1
+    else:
+        print(
+            f"[MODE] Languages={args.langs}, "
+            f"{args.sites_per_lang} sites/language, "
+            f"{args.articles_per_site} articles/site"
+        )
+        urls = gather_from_config(
+            engine,
+            args.langs,
+            args.sites_per_lang,
+            args.articles_per_site,
+            exclude=args.exclude,
+            sites_filter=args.sites,
+        )
+        if urls:
+            save_baseline(urls, args.baseline)
 
-    urls = gather_from_config(
-        engine,
-        args.langs,
-        args.sites_per_lang,
-        args.articles_per_site,
-        exclude=args.exclude,
-        sites_filter=args.sites,
-    )
-    
     if not urls:
         print("[ERROR] No URLs collected.")
         return 1

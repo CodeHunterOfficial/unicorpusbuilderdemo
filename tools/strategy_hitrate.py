@@ -12,6 +12,24 @@ Per field (author, title, date, category, content) the script reports:
 Body-extraction quality for UniCorpusBuilder is measured against an
 independently built gold text.
 
+Category coverage
+-----------------
+Two numbers are reported per site and in the final table:
+
+  * ``category_raw`` — a strategy returned any non-empty value (cleaned
+    of JSON blobs by ``_clean_probe_value``). This is the raw strategy
+    hit count and matches ``stats["category"]``.
+  * ``category`` — the value survives ``_acceptable_category``
+    (dates, generic labels, URL slugs rejected). This is the number to
+    quote as "category extracted" in the article, and it is the same
+    filter ``benchmark_trafilatura._acceptable_category`` applies.
+
+Without this distinction the previous version reported the raw hit
+count (68.6 % on 118 documents), which over-counts because a single
+document can lose multiple strategies and because dates and slugs pass
+``_clean_probe_value``. The post-filter number is the only one
+comparable with Trafilatura coverage.
+
 ROUGE tokenizer
 ---------------
 ``rouge_score.RougeScorer`` accepts a ``tokenizer`` object and calls
@@ -45,8 +63,9 @@ Config mode — sites selected from ``config/universal.yaml``, either by
 language (``--langs`` + ``--sites-per-lang``) or by explicit site keys
 (``--sites``). File mode — URLs read from local JSONL files. URL-file
 mode — URLs read from a CSV with ``url``, ``site``, ``lang`` columns;
-discovery is skipped entirely. Use it to rerun the analysis on the
-same documents after a code change.
+discovery is skipped entirely. Rows with a non-empty ``error`` column
+or ``included == False`` are ignored, so a benchmark CSV can be
+replayed as-is.
 
 Usage
 -----
@@ -506,6 +525,67 @@ def _looks_like_author_name(value: Optional[str]) -> bool:
 
 
 # ---------------------------------------------------------------------------
+# Category filter (mirrors benchmark_trafilatura._acceptable_category)
+# ---------------------------------------------------------------------------
+
+_GENERIC_CATEGORY_LABELS = frozenset({
+    "главная", "главная страница", "home", "main", "index", "начало",
+    "новости", "новость", "news", "novosti",
+    "common_material", "common materials", "материалы", "статьи",
+    "фото", "photo", "видео", "video",
+    "архив", "archive",
+    "разное", "other", "прочее",
+    "рубрика", "категория", "раздел", "тег", "tag", "rubric", "category",
+})
+
+_CAT_MONTHS = (
+    r"январ\w*|феврал\w*|март\w*|апрел\w*|ма[йя]|июн\w*|июл\w*|"
+    r"август\w*|сентябр\w*|октябр\w*|ноябр\w*|декабр\w*|"
+    r"january|february|march|april|may|june|july|august|september|"
+    r"october|november|december"
+)
+
+_DATE_ONLY_CAT_RE = re.compile(
+    rf"^\d{{1,2}}\s+(?:{_CAT_MONTHS})\s+\d{{4}}(?:,?\s+\d{{1,2}}:\d{{2}})?$",
+    re.IGNORECASE,
+)
+_DATE_EMBEDDED_CAT_RE = re.compile(rf"\d{{1,2}}\s+(?:{_CAT_MONTHS})", re.IGNORECASE)
+
+
+def _acceptable_category(value: Optional[str]) -> Optional[str]:
+    """Mirror of ``benchmark_trafilatura._acceptable_category``.
+
+    Returns the stripped value if it looks like a real category, or
+    None if it is a JSON blob, a generic label, a date, or a URL slug.
+    Keeping this in sync with the benchmark ensures the two tools
+    report the same "category extracted" number.
+    """
+    if not value:
+        return None
+    text = re.sub(r"\s+", " ", str(value)).strip()
+    if not text:
+        return None
+    if text.startswith(("{", "[")):
+        return None
+    if "@context" in text or "@type" in text:
+        return None
+    if len(text) > 120:
+        return None
+    low = text.lower().strip()
+    if low in _GENERIC_CATEGORY_LABELS:
+        return None
+    if _DATE_ONLY_CAT_RE.match(text):
+        return None
+    if _DATE_EMBEDDED_CAT_RE.search(text):
+        return None
+    if " " not in text and "-" in text and text == text.lower():
+        return None
+    if re.fullmatch(r"[a-z]{3,}", text):
+        return None
+    return text
+
+
+# ---------------------------------------------------------------------------
 # Strategy tracker
 # ---------------------------------------------------------------------------
 
@@ -706,8 +786,26 @@ def iter_articles_from_files(
                 }
 
 
+def _row_is_included(row: dict[str, str]) -> bool:
+    """Return True if a benchmark CSV row should be replayed.
+
+    Excludes rows with a non-empty ``error`` column and rows explicitly
+    marked ``included`` as False by ``benchmark_trafilatura``.
+    """
+    if (row.get("error") or "").strip():
+        return False
+    included = (row.get("included") or "").strip().lower()
+    if included in ("false", "0", "no"):
+        return False
+    return True
+
+
 def iter_articles_from_url_file(path: Path) -> list[dict[str, str]]:
-    """Load ``{url, site, lang}`` dicts from a CSV file."""
+    """Load ``{url, site, lang}`` dicts from a CSV file.
+
+    Works with both the older ``trafilatura_comparison.csv`` layout and
+    the new one that carries ``error`` and ``included`` columns.
+    """
     with open(path, "r", encoding="utf-8", newline="") as handle:
         reader = csv.DictReader(handle)
         rows: list[dict[str, str]] = []
@@ -715,7 +813,7 @@ def iter_articles_from_url_file(path: Path) -> list[dict[str, str]]:
             url = (row.get("url") or "").strip()
             if not url:
                 continue
-            if (row.get("error") or "").strip():
+            if not _row_is_included(row):
                 continue
             rows.append(
                 {
@@ -960,7 +1058,13 @@ def probe_category(
     site_cfg: dict[str, Any],
     tracker: Optional[StrategyTracker] = None,
 ) -> ProbeResult:
-    """Try each category strategy in order and return the first value."""
+    """Try each category strategy in order and return the first value.
+
+    The value returned here is *raw* — it is filtered downstream by
+    ``_acceptable_category`` so that dates, slugs and generic labels
+    do not count towards coverage. Keeping this probe raw preserves the
+    per-strategy hit counts used in the article's strategy table.
+    """
     strategies = site_cfg.get("category_strategy") or []
 
     for strategy in strategies:
@@ -1101,6 +1205,12 @@ def run_analysis(
     """
     Walk the URL list, probe every field on every document, and return
     per-strategy counters plus per-site/per-language quality samples.
+
+    Category coverage is tracked at two levels:
+      * ``coverage_ok[site]["category_raw"]`` — a strategy returned any
+        non-empty value (same total as ``stats["category"]``);
+      * ``coverage_ok[site]["category"]`` — the value survived
+        ``_acceptable_category`` (the number to quote in the article).
     """
     stats = {
         name: Counter()
@@ -1133,6 +1243,7 @@ def run_analysis(
 
     total = 0
     failed_fetch = 0
+    rejected_categories = 0
 
     print(f"\n[FETCH] Processing {len(urls_to_process)} URLs...\n")
 
@@ -1182,7 +1293,11 @@ def run_analysis(
         category = probe_category(engine, soup, url, site_cfg, tracker)
         stats["category"][category.strategy or "[missed]"] += 1
         if category.strategy:
-            coverage_ok[site]["category"] += 1
+            coverage_ok[site]["category_raw"] += 1
+            if _acceptable_category(category.value):
+                coverage_ok[site]["category"] += 1
+            else:
+                rejected_categories += 1
 
         content = probe_content(engine, soup, site_cfg, tracker)
         stats["content"][content.strategy or "[missed]"] += 1
@@ -1217,6 +1332,12 @@ def run_analysis(
 
         total += 1
         time.sleep(sleep)
+
+    if rejected_categories:
+        print(
+            f"[CATEGORY] {rejected_categories} raw values rejected by "
+            f"_acceptable_category (dates, slugs, generic labels)"
+        )
 
     return (
         stats,
@@ -1502,11 +1623,11 @@ def main(argv: Optional[list[str]] = None) -> int:
     print("[COVERAGE BY SITE]")
     print(f"{'=' * 70}")
     print(
-        f"  {'Site':<20} {'N':>4} {'Author':>8} {'Title':>8} "
-        f"{'Date':>8} {'Categ':>8} {'Cont':>8} "
+        f"  {'Site':<18} {'N':>4} {'Author':>8} {'Title':>8} "
+        f"{'Date':>8} {'Categ':>8} {'CatRaw':>8} {'Cont':>8} "
         f"{'ROUGE-L':>9} {'WordF1':>8}"
     )
-    print("  " + "-" * 92)
+    print("  " + "-" * 100)
 
     coverage_rows: list[dict[str, Any]] = []
     for site in sorted(coverage_total):
@@ -1518,6 +1639,7 @@ def main(argv: Optional[list[str]] = None) -> int:
         title_pct = ok["title"] / site_total * 100
         date_pct = ok["date"] / site_total * 100
         category_pct = ok["category"] / site_total * 100
+        category_raw_pct = ok["category_raw"] / site_total * 100
         content_pct = ok["content"] / site_total * 100
 
         site_rouge_l = stats_summary(quality_by_site[site]["rouge_l"])
@@ -1530,10 +1652,11 @@ def main(argv: Optional[list[str]] = None) -> int:
         )
 
         print(
-            f"  {site:<20} {site_total:>4} "
+            f"  {site:<18} {site_total:>4} "
             f"{author_pct:>7.1f}% {title_pct:>7.1f}% "
             f"{date_pct:>7.1f}% {category_pct:>7.1f}% "
-            f"{content_pct:>7.1f}% {rouge_display:>9} {word_display:>8}"
+            f"{category_raw_pct:>7.1f}% {content_pct:>7.1f}% "
+            f"{rouge_display:>9} {word_display:>8}"
         )
 
         coverage_rows.append(
@@ -1544,6 +1667,7 @@ def main(argv: Optional[list[str]] = None) -> int:
                 "title_pct": round(title_pct, 1),
                 "date_pct": round(date_pct, 1),
                 "category_pct": round(category_pct, 1),
+                "category_raw_pct": round(category_raw_pct, 1),
                 "content_pct": round(content_pct, 1),
                 "rouge_l_mean": (
                     round(site_rouge_l["mean"], 4) if site_rouge_l else None
@@ -1640,7 +1764,11 @@ def main(argv: Optional[list[str]] = None) -> int:
             f"{sum(coverage_ok[s]['date'] for s in coverage_total) / total * 100:>17.1f}%"
         )
         print(
-            f"  {'Category extracted':<40} "
+            f"  {'Category extracted (raw)':<40} "
+            f"{sum(coverage_ok[s]['category_raw'] for s in coverage_total) / total * 100:>17.1f}%"
+        )
+        print(
+            f"  {'Category extracted (post-filter)':<40} "
             f"{sum(coverage_ok[s]['category'] for s in coverage_total) / total * 100:>17.1f}%"
         )
         print(
@@ -1676,7 +1804,7 @@ def main(argv: Optional[list[str]] = None) -> int:
             handle,
             fieldnames=[
                 "site", "articles", "author_pct", "title_pct", "date_pct",
-                "category_pct", "content_pct",
+                "category_pct", "category_raw_pct", "content_pct",
                 "rouge_l_mean", "rouge_l_n", "word_f1_mean",
             ],
         )

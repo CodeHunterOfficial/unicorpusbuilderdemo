@@ -5,9 +5,9 @@ Author verification helper for the trafilatura benchmark.
 Purpose
 -------
 ``tools/benchmark_trafilatura.py`` checks author correctness only on
-documents that carry ``<meta name="author">`` (14 of 138 in the current
-run). The remaining 124 are the ones the reviewer flagged: no meta
-reference exists, so correctness was never verified.
+documents that carry ``<meta name="author">`` (14 of 118 in the current
+run). The remaining 104 have no meta reference, so correctness was
+never verified there.
 
 This tool does NOT verify authors automatically — that is a judgement
 call that cannot be automated for multi-author bylines, editorial
@@ -26,8 +26,18 @@ The ``verdict_*`` columns are filled by hand:
     unknown    — cannot determine
     (empty)    — not yet labelled
 
-``stats`` mode aggregates the labelled CSV into the numbers requested
-by the reviewer (checked / correct / wrong / share of filled).
+``stats`` mode aggregates the labelled CSV into four metrics per
+system and reports them under unambiguous names:
+
+    correct / labeled                    — precision on verified rows
+    correct / filled                     — yield among filled fields
+    (correct + editorial) / labeled      — byline precision
+    (correct + editorial) / filled       — byline yield
+
+``correct`` counts personal names only. ``editorial`` counts editorial
+bylines («Редакция», «Пресс-служба»): they are valid bylines but not
+personal names. ``unknown`` means the page carries no byline and the
+verdict cannot be decided.
 
 Design decisions
 ----------------
@@ -36,8 +46,12 @@ Design decisions
 * The output CSV is keyed by ``url``. On a rerun the ``verdict_*`` and
   ``notes`` columns are preserved, even if the signature columns are
   recomputed.
+* ``prepare`` refuses to overwrite a file that already contains manual
+  verdicts unless its name contains ``filled`` or ``--force`` is
+  passed. This prevents the common mistake of clobbering the labelled
+  sheet by re-running with the default ``--out``.
 * Signature lookup is deliberately permissive: it returns the first
-  matching pattern AND a context snippet, so the human can see the
+  matching pattern and a context snippet, so the human can see the
   whole byline block. Precision is not the goal here; coverage is.
 * No automatic labelling, no ML. Every ``verdict`` is a human decision.
 
@@ -46,10 +60,16 @@ Usage
     # 1. Prepare the verification sheet
     python tools/author_verification.py prepare
 
-    # 2. Fill ``verdict_ucb`` / ``verdict_traf`` in the CSV, save
+    # 2. Copy and fill verdicts
+    copy author_verification.csv author_verification_filled.csv
+    # edit author_verification_filled.csv, save
 
     # 3. Summarize
-    python tools/author_verification.py stats
+    python tools/author_verification.py stats author_verification_filled.csv
+
+    # Optional: write the summary to a CSV for the article pipeline
+    python tools/author_verification.py stats author_verification_filled.csv \\
+        --out-csv author_verification_stats.csv
 
     # Custom paths, force re-fetch, limit for testing
     python tools/author_verification.py prepare \\
@@ -59,7 +79,8 @@ Usage
 
 Exit codes
 ----------
-    prepare: 0 on success; 1 if the comparison CSV is missing or empty.
+    prepare: 0 on success; 1 if the comparison CSV is missing or empty,
+                or if writing would overwrite manual verdicts.
     stats:   0 on success; 1 if the verification CSV is missing.
 
 See also
@@ -76,6 +97,7 @@ import os
 import re
 import sys
 import time
+from collections import Counter, defaultdict
 from pathlib import Path
 from typing import Optional
 
@@ -150,10 +172,17 @@ CSV_FIELDS = [
     "notes",
 ]
 
-# Verdicts that count as "a correct byline was extracted" in stats.
-# ``editorial`` is a valid byline (Редакция, Пресс-служба) but not a
-# personal name; it is reported separately in ``stats``.
-CORRECT_VERDICTS = {"correct", "editorial"}
+STATS_FIELDS = [
+    "system", "filled", "labeled", "correct", "editorial", "wrong",
+    "unknown", "unlabeled",
+    "correct_over_labeled", "correct_over_filled",
+    "byline_over_labeled", "byline_over_filled",
+]
+
+# Verdicts that count as a labelled row. ``unknown`` is a human
+# decision but excluded from every ratio, because there is nothing to
+# compare against on the page.
+LABELED_VERDICTS = {"correct", "editorial", "wrong"}
 
 
 # ------------------------------------------------------------------
@@ -174,6 +203,19 @@ def _truncate(s: str, n: int) -> str:
 def _url_cache_key(url: str) -> str:
     """Stable short filename key for the HTML cache."""
     return hashlib.sha256(url.encode("utf-8")).hexdigest()[:16]
+
+
+def _norm_verdict(value: str) -> str:
+    """Lowercase and strip a verdict cell."""
+    return (value or "").strip().lower()
+
+
+def _ratio(num: int, den: int) -> Optional[float]:
+    return (num / den) if den else None
+
+
+def _fmt_pct(value: Optional[float]) -> str:
+    return f"{value * 100:5.1f}%" if value is not None else "   N/A"
 
 
 # ------------------------------------------------------------------
@@ -306,7 +348,7 @@ def read_comparison(path: Path, include_meta: bool = False) -> list[dict]:
 
     out: list[dict] = []
     for r in rows:
-        if r.get("error"):
+        if (r.get("error") or "").strip():
             continue
         if not include_meta and (r.get("ref_meta_author") or "").strip():
             continue
@@ -338,6 +380,20 @@ def load_existing_verdicts(path: Path) -> dict[str, dict]:
     return out
 
 
+def has_manual_verdicts(path: Path) -> bool:
+    """Return True if any row in ``path`` already carries a verdict."""
+    verdicts = load_existing_verdicts(path)
+    return any(
+        _norm_verdict(v["verdict_ucb"]) or _norm_verdict(v["verdict_traf"])
+        for v in verdicts.values()
+    )
+
+
+def _is_filled_path(path: Path) -> bool:
+    """Return True if the filename suggests a labelled copy."""
+    return "filled" in path.stem.lower()
+
+
 def write_csv(path: Path, rows: list[dict]) -> None:
     path.parent.mkdir(parents=True, exist_ok=True)
     with open(path, "w", encoding="utf-8", newline="") as f:
@@ -357,6 +413,31 @@ def cmd_prepare(args) -> int:
         print(f"[ERROR] Config not found: {args.config}")
         return 1
 
+    out_path = Path(args.out)
+
+    if (
+        out_path.exists()
+        and not _is_filled_path(out_path)
+        and has_manual_verdicts(out_path)
+        and not args.force
+    ):
+        print(
+            f"[REFUSE] {out_path} already contains manual verdicts and its "
+            f"name does not contain 'filled'."
+        )
+        print(
+            "         This is the working sheet, not a scratch copy. Write "
+            "to a *_filled.csv file,"
+        )
+        print(
+            "         or pass --force to overwrite anyway. Re-running "
+            "prepare on the base sheet"
+        )
+        print(
+            "         is safe when no verdicts were entered yet."
+        )
+        return 1
+
     rows = read_comparison(comparison_path, include_meta=args.include_meta)
     if not rows:
         print("[INFO] No rows need manual verification.")
@@ -368,7 +449,6 @@ def cmd_prepare(args) -> int:
         rows = rows[: args.limit]
     print(f"[PLAN] {len(rows)} URLs need manual author verification")
 
-    out_path = Path(args.out)
     existing = load_existing_verdicts(out_path)
     if existing:
         print(f"[RESUME] Preserving verdicts for {len(existing)} existing URLs")
@@ -453,20 +533,134 @@ def cmd_prepare(args) -> int:
     print(f"     cached:  {n_cached}")
     print(f"     fetched: {n_fetched}")
     print(f"     failed:  {n_failed}")
-    print(f"\n[NEXT] Fill the ``verdict_ucb`` / ``verdict_traf`` columns:")
+    if not _is_filled_path(out_path):
+        print()
+        print("[NEXT] Make a working copy for manual labeling:")
+        print(f"       copy {out_path} {out_path.with_stem(out_path.stem + '_filled')}")
+        print("       Edit the *_filled.csv copy, NOT the base sheet.")
+    print()
+    print("[NEXT] Fill the ``verdict_ucb`` / ``verdict_traf`` columns:")
     print("       correct    — matches a personal name on the page")
     print("       editorial  — page shows an editorial byline "
           "(«Редакция», «Пресс-служба»)")
     print("       wrong      — does not match anything on the page")
     print("       unknown    — cannot determine")
     print("       Empty cells are treated as not yet labelled.")
-    print(f"\n       Then run: python {sys.argv[0]} stats")
+    print(f"\n       Then run: python {sys.argv[0]} stats "
+          f"{out_path.with_stem(out_path.stem + '_filled')}")
     return 0
 
 
 # ------------------------------------------------------------------
 # Stats command
 # ------------------------------------------------------------------
+
+def _system_metrics(rows: list[dict], key: str) -> dict:
+    """Return the four metrics and the verdict counts for one system."""
+    author_col = f"{key}_author"
+    verdict_col = f"verdict_{key}"
+
+    filled = [r for r in rows if _norm_verdict(r.get(author_col) or "")]
+    labeled = [
+        r for r in filled
+        if _norm_verdict(r.get(verdict_col)) in LABELED_VERDICTS
+    ]
+    correct = [r for r in labeled if _norm_verdict(r.get(verdict_col)) == "correct"]
+    editorial = [r for r in labeled if _norm_verdict(r.get(verdict_col)) == "editorial"]
+    wrong = [r for r in labeled if _norm_verdict(r.get(verdict_col)) == "wrong"]
+    unknown = [r for r in filled if _norm_verdict(r.get(verdict_col)) == "unknown"]
+    unlabeled = [r for r in filled if not _norm_verdict(r.get(verdict_col))]
+
+    n_filled = len(filled)
+    n_labeled = len(labeled)
+    n_correct = len(correct)
+    n_editorial = len(editorial)
+
+    return {
+        "filled": n_filled,
+        "labeled": n_labeled,
+        "correct": n_correct,
+        "editorial": n_editorial,
+        "wrong": len(wrong),
+        "unknown": len(unknown),
+        "unlabeled": len(unlabeled),
+        "correct_over_labeled": _ratio(n_correct, n_labeled),
+        "correct_over_filled": _ratio(n_correct, n_filled),
+        "byline_over_labeled": _ratio(n_correct + n_editorial, n_labeled),
+        "byline_over_filled": _ratio(n_correct + n_editorial, n_filled),
+    }
+
+
+def _wrong_by_site(rows: list[dict], key: str) -> Counter:
+    """Count ``wrong`` verdicts per site for one system."""
+    verdict_col = f"verdict_{key}"
+    counter: Counter = Counter()
+    for r in rows:
+        if _norm_verdict(r.get(verdict_col)) != "wrong":
+            continue
+        if not _norm_verdict(r.get(f"{key}_author") or ""):
+            continue
+        counter[(r.get("site") or "?")] += 1
+    return counter
+
+
+def _filled_and_labeled_by_site(rows: list[dict], key: str) -> dict[str, dict[str, int]]:
+    """Per-site ``filled`` / ``labeled`` / ``correct`` / ``wrong`` for one system."""
+    author_col = f"{key}_author"
+    verdict_col = f"verdict_{key}"
+    out: dict[str, dict[str, int]] = defaultdict(
+        lambda: {"filled": 0, "labeled": 0, "correct": 0, "editorial": 0, "wrong": 0}
+    )
+    for r in rows:
+        if not _norm_verdict(r.get(author_col) or ""):
+            continue
+        site = r.get("site") or "?"
+        out[site]["filled"] += 1
+        v = _norm_verdict(r.get(verdict_col))
+        if v in LABELED_VERDICTS:
+            out[site]["labeled"] += 1
+            if v == "correct":
+                out[site]["correct"] += 1
+            elif v == "editorial":
+                out[site]["editorial"] += 1
+            elif v == "wrong":
+                out[site]["wrong"] += 1
+    return out
+
+
+def _write_stats_csv(path: Path, systems: dict[str, dict]) -> None:
+    path.parent.mkdir(parents=True, exist_ok=True)
+    with open(path, "w", encoding="utf-8", newline="") as f:
+        w = csv.DictWriter(f, fieldnames=STATS_FIELDS)
+        w.writeheader()
+        for label, s in systems.items():
+            w.writerow({
+                "system": label,
+                "filled": s["filled"],
+                "labeled": s["labeled"],
+                "correct": s["correct"],
+                "editorial": s["editorial"],
+                "wrong": s["wrong"],
+                "unknown": s["unknown"],
+                "unlabeled": s["unlabeled"],
+                "correct_over_labeled": (
+                    round(s["correct_over_labeled"], 4)
+                    if s["correct_over_labeled"] is not None else None
+                ),
+                "correct_over_filled": (
+                    round(s["correct_over_filled"], 4)
+                    if s["correct_over_filled"] is not None else None
+                ),
+                "byline_over_labeled": (
+                    round(s["byline_over_labeled"], 4)
+                    if s["byline_over_labeled"] is not None else None
+                ),
+                "byline_over_filled": (
+                    round(s["byline_over_filled"], 4)
+                    if s["byline_over_filled"] is not None else None
+                ),
+            })
+
 
 def cmd_stats(args) -> int:
     path = Path(args.infile)
@@ -483,91 +677,114 @@ def cmd_stats(args) -> int:
         print("[INFO] Empty CSV.")
         return 1
 
-    def norm(v: str) -> str:
-        return (v or "").strip().lower()
-
-    systems: dict[str, dict] = {}
-    for key in ("ucb", "traf"):
-        author_col = f"{key}_author"
-        verdict_col = f"verdict_{key}"
-
-        filled = [r for r in rows if norm(r.get(author_col))]
-        labeled = [
-            r for r in filled
-            if norm(r.get(verdict_col)) in {"correct", "editorial", "wrong"}
-        ]
-        correct = [r for r in labeled if norm(r.get(verdict_col)) == "correct"]
-        editorial = [r for r in labeled if norm(r.get(verdict_col)) == "editorial"]
-        wrong = [r for r in labeled if norm(r.get(verdict_col)) == "wrong"]
-        unknown = [r for r in filled if norm(r.get(verdict_col)) == "unknown"]
-        unlabeled = [r for r in filled if not norm(r.get(verdict_col))]
-
-        precision_labeled = (
-            (len(correct) + len(editorial)) / len(labeled) if labeled else None
-        )
-        correctness_over_filled = (
-            (len(correct) + len(editorial)) / len(filled) if filled else None
-        )
-
-        systems[key] = {
-            "filled": len(filled),
-            "labeled": len(labeled),
-            "correct": len(correct),
-            "editorial": len(editorial),
-            "wrong": len(wrong),
-            "unknown": len(unknown),
-            "unlabeled": len(unlabeled),
-            "precision_labeled": precision_labeled,
-            "correctness_over_filled": correctness_over_filled,
-        }
+    systems = {
+        "UniCorpusBuilder": _system_metrics(rows, "ucb"),
+        "Trafilatura": _system_metrics(rows, "traf"),
+    }
 
     total = len(rows)
     both = sum(1 for r in rows
-               if norm(r.get("ucb_author")) and norm(r.get("traf_author")))
+               if _norm_verdict(r.get("ucb_author") or "")
+               and _norm_verdict(r.get("traf_author") or ""))
     only_ucb = sum(1 for r in rows
-                   if norm(r.get("ucb_author")) and not norm(r.get("traf_author")))
+                   if _norm_verdict(r.get("ucb_author") or "")
+                   and not _norm_verdict(r.get("traf_author") or ""))
     only_traf = sum(1 for r in rows
-                    if norm(r.get("traf_author")) and not norm(r.get("ucb_author")))
+                    if _norm_verdict(r.get("traf_author") or "")
+                    and not _norm_verdict(r.get("ucb_author") or ""))
 
-    print(f"\n{'=' * 70}")
+    print(f"\n{'=' * 74}")
     print("[AUTHOR VERIFICATION SUMMARY]")
-    print(f"{'=' * 70}")
+    print(f"{'=' * 74}")
     print(f"  Documents in CSV:                {total}")
     print(f"    both systems filled author:    {both}")
     print(f"    only UniCorpusBuilder filled:  {only_ucb}")
     print(f"    only Trafilatura filled:       {only_traf}")
     print()
 
-    for key, label in (("ucb", "UniCorpusBuilder"), ("traf", "Trafilatura")):
-        s = systems[key]
+    for label, s in systems.items():
         print(f"  --- {label} ---")
-        print(f"    author filled:                 {s['filled']}")
-        print(f"    manually labeled:              {s['labeled']}"
-              f"   (unknown: {s['unknown']}, unlabeled: {s['unlabeled']})")
-        print(f"    correct (personal name):       {s['correct']}")
-        print(f"    editorial (not a person):      {s['editorial']}")
-        print(f"    wrong:                         {s['wrong']}")
-        if s["precision_labeled"] is not None:
-            print(f"    precision among labeled:       "
-                  f"{s['precision_labeled'] * 100:.1f}%")
-        else:
-            print(f"    precision among labeled:       N/A")
-        if s["correctness_over_filled"] is not None:
-            print(f"    correct+editorial / filled:    "
-                  f"{s['correctness_over_filled'] * 100:.1f}%")
+        print(f"    author filled:                        {s['filled']}")
+        print(
+            f"    manually labeled:                     {s['labeled']}"
+            f"   (unknown: {s['unknown']}, unlabeled: {s['unlabeled']})"
+        )
+        print(f"    correct (personal name):              {s['correct']}")
+        print(f"    editorial (not a person):             {s['editorial']}")
+        print(f"    wrong:                                {s['wrong']}")
+        print(
+            f"    correct / labeled:                    "
+            f"{_fmt_pct(s['correct_over_labeled'])}"
+            f"   ({s['correct']}/{s['labeled']})"
+        )
+        print(
+            f"    correct / filled:                     "
+            f"{_fmt_pct(s['correct_over_filled'])}"
+            f"   ({s['correct']}/{s['filled']})"
+        )
+        print(
+            f"    (correct + editorial) / labeled:      "
+            f"{_fmt_pct(s['byline_over_labeled'])}"
+            f"   ({s['correct'] + s['editorial']}/{s['labeled']})"
+        )
+        print(
+            f"    (correct + editorial) / filled:       "
+            f"{_fmt_pct(s['byline_over_filled'])}"
+            f"   ({s['correct'] + s['editorial']}/{s['filled']})"
+        )
         print()
 
-    print("[NOTE] 'editorial' counts as a correct byline but is not a "
-          "personal name.\n"
-          "       Report precision (correct / labeled) and share of "
-          "filled (correct+editorial / filled)\n"
-          "       separately — they answer different questions.")
+    print("[BY SITE] filled / labeled / correct / editorial / wrong")
+    print(f"  {'Site':<16} "
+          f"{'UCB fill':>9} {'UCB lab':>8} {'UCB cor':>8} {'UCB ed':>7} {'UCB wr':>7}  "
+          f"{'TF fill':>8} {'TF lab':>7} {'TF cor':>7} {'TF ed':>6} {'TF wr':>6}")
+    print("  " + "-" * 112)
+
+    ucb_site = _filled_and_labeled_by_site(rows, "ucb")
+    traf_site = _filled_and_labeled_by_site(rows, "traf")
+    all_sites = sorted(set(ucb_site) | set(traf_site))
+
+    for site in all_sites:
+        u = ucb_site.get(site, {"filled": 0, "labeled": 0, "correct": 0,
+                                "editorial": 0, "wrong": 0})
+        t = traf_site.get(site, {"filled": 0, "labeled": 0, "correct": 0,
+                                 "editorial": 0, "wrong": 0})
+        print(
+            f"  {site:<16} "
+            f"{u['filled']:>9} {u['labeled']:>8} {u['correct']:>8} "
+            f"{u['editorial']:>7} {u['wrong']:>7}  "
+            f"{t['filled']:>8} {t['labeled']:>7} {t['correct']:>7} "
+            f"{t['editorial']:>6} {t['wrong']:>6}"
+        )
+
+    print()
+    print("[WRONG BY SITE]")
+    for label, key in (("UniCorpusBuilder", "ucb"), ("Trafilatura", "traf")):
+        counter = _wrong_by_site(rows, key)
+        if not counter:
+            print(f"  {label}: (none)")
+            continue
+        summary = ", ".join(f"{site}={n}" for site, n in counter.most_common())
+        print(f"  {label}: {summary}")
+
+    print()
+    print("[NOTE] 'correct' counts personal names only; 'editorial' counts")
+    print("       editorial bylines («Редакция», «Пресс-служба»). Report")
+    print("       'correct / labeled' as precision and 'correct / filled' as")
+    print("       yield. Do not average the two: they answer different questions.")
+    print("       The four ratios above replace the earlier 'precision among labeled',")
+    print("       which mixed personal names and editorial bylines in the numerator.")
+
+    if args.out_csv:
+        out_path = Path(args.out_csv)
+        _write_stats_csv(out_path, systems)
+        print(f"\n[OK] Stats CSV: {out_path}")
 
     logger.info(
         "stats: "
         + " ".join(
             f"{k}=correct:{v['correct']},editorial:{v['editorial']},"
-            f"wrong:{v['wrong']},labeled:{v['labeled']}"
+            f"wrong:{v['wrong']},labeled:{v['labeled']},filled:{v['filled']}"
             for k, v in systems.items()
         )
     )
@@ -593,11 +810,12 @@ Typical workflow:
      and context columns):
          python tools/author_verification.py prepare
 
-  3. Open author_verification.csv in Excel / LibreOffice / Sheets,
-     fill ``verdict_ucb`` and ``verdict_traf``, save.
+  3. Make a working copy and label it:
+         copy author_verification.csv author_verification_filled.csv
+         # edit author_verification_filled.csv, NOT the base sheet
 
   4. Summarize:
-         python tools/author_verification.py stats
+         python tools/author_verification.py stats author_verification_filled.csv
         """,
     )
     sub = ap.add_subparsers(dest="cmd", required=True)
@@ -624,15 +842,22 @@ Typical workflow:
                         help="Process only first N rows (0 = all)")
     p_prep.add_argument("--sleep", type=float, default=0.3,
                         help="Delay between fetches, seconds (default: 0.3)")
+    p_prep.add_argument("--force", action="store_true",
+                        help="Allow overwriting a sheet that already "
+                             "contains manual verdicts and does not have "
+                             "'filled' in its name")
     p_prep.set_defaults(func=cmd_prepare)
 
     p_stats = sub.add_parser(
         "stats",
         help="Summarize verdicts from the verification CSV",
     )
-    p_stats.add_argument("infile", nargs="?", default="author_verification.csv",
+    p_stats.add_argument("infile", nargs="?", default="author_verification_filled.csv",
                          help="Verification CSV "
-                              "(default: author_verification.csv)")
+                              "(default: author_verification_filled.csv)")
+    p_stats.add_argument("--out-csv", default=None,
+                         help="Optional path to write the four metrics per "
+                              "system as CSV")
     p_stats.set_defaults(func=cmd_stats)
 
     args = ap.parse_args()
@@ -641,3 +866,4 @@ Typical workflow:
 
 if __name__ == "__main__":
     sys.exit(main())
+    

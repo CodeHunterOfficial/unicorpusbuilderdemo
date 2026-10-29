@@ -808,149 +808,184 @@ sites:
       
   # ============================================================
   # vkd.tj — Ministry of Internal Affairs news portal
-  # Listing is section-scoped (Рӯйдодҳо). Other sections are reached
-  # through rubric discovery from the start_url.
-  # ============================================================
+   # ============================================================
+       
   vkd:
     match:
       - "vkd.tj"
+      - "www.vkd.tj"
+      - "mvd.tj"
+      - "www.mvd.tj"
     default_language: "tg"
     noise_language: ["common", "tg"]
-    start_url: "https://www.vkd.tj/tj/ruydodho/"
+    start_url: "https://www.mvd.tj/tj/ruydodho/"
     verify_ssl: true
 
     rubric_strategy:
-      - "menu_scraping"
-
-    author_strategy:
-      - "meta_tag"
-      - "json_ld_graph"
-      - "class_selector"
-      - "regex_in_content"
-
-    rubric_selectors:
-      - "nav a[href*='/tj/']"
-      - "header a[href*='/tj/']"
-
-    card_selectors:
-      - "div.news-item"
-
-    article_link_selectors:
-      - "a.side-item-link"
-      - "a[href$='.html']"
-
-    pagination_selectors:
-      - "div.pagination a"
-      - "a[href*='/page/']"
-      - "link[rel='next']"
-
-    title_selectors:
-      - "h1"
-      - "title"
-
-    date_selectors:
-      - ".full-meta .main-item-date"
-      - "meta[property='article:published_time']"
-      - "meta[name='pubdate']"
-      - "meta[itemprop='datePublished']"
-      - "time[datetime]"
-
-    author_selectors:
-      - "meta[name='Author']"
-      - "meta[name='author']"
-      - "meta[property='article:author']"
-
-    category_selectors:
-      - "meta[property='article:section']"
-
-    category_strategy:
-      - "meta_tag"
+      - "context_passed"
       - "url_path_parsing"
 
-    content_selectors:
-      - "#full-text"
-      - "article.full"
-      - "article"
-
-    remove_selectors:
-      - ".share"
-      - ".social"
-      - ".banner"
-
-    article_url_filters:
-      - ".html"
+    article_url_regex: "^/\\d+-[^/]+\\.html$"
 
     article_url_excludes:
       - "/page/"
+      - "/tj/"
+      - "/uploads/"
+      - "/engine/"
+      - "/templates/"
+      - "/feedback"
+      - "\\.(jpg|jpeg|png|webp|gif|pdf|css|js)$"
 
-    date_locale: "tg"
+    card_selectors:
+      - "div.side-item.side-item2"
+      - "div.main-item"
+      - "div.news-item"
 
-  # ============================================================
+    article_link_selectors:
+      - "div.side-item.side-item2 a.side-item-link[href$='.html']"
+      - "div.side-item.side-item2 a[href$='.html']"
+      - "div.main-item a.main-item-link[href$='.html']"
+      - "a[href$='.html']"
+
+    pagination_selectors:
+      - "link[rel='next']"
+      - "a[href*='/page/']"
+
+    title_selectors:
+      - "article.full > h1"
+      - "meta[property='og:title']"
+      - "h1"
+
+    date_selectors:
+      - ".full-meta > div:first-child"
+      - ".full-meta .main-item-date:first-of-type"
+      - "time[datetime]"
+
+    author_strategy:
+      - "meta_tag"
+
+    author_selectors:
+      - "meta[name='author']"
+      - "meta[property='article:author']"
+
+    author_blacklist:
+      - "admin"
+      - "editor"
+
+    category_strategy:
+      - "context_passed"
+      - "url_path_parsing"
+
+    content_selectors:
+      - "div#full-text"
+      - "div.full-text"
+
+    remove_selectors:
+      - ".fbtm"
+      - ".ya-share2"
+      - ".sect"
+      - "aside"
+      - "header"
+      - "footer"
+      - "nav"
+      - "script"
+      - ".slider"
+
+# ============================================================
   # khf.tj — Center for Strategic Research under the President
-  # Drupal site. Listing is /node?page=N. span.username contains the
-  # Drupal login "admin" on every page, not a personal byline, so it
-  # is omitted from author_selectors. meta[name="Author"] is rare;
-  # author extraction yields None on most pages.
   # ============================================================
+  khf:
   khf:
     match:
       - "khf.tj"
+      - "www.khf.tj"
     default_language: "tg"
     noise_language: ["common", "tg"]
     start_url: "https://www.khf.tj/node"
     verify_ssl: true
 
     rubric_strategy:
-      - "menu_scraping"
+      - "context_passed"
+
+    card_selectors:
+      - "article.node-teaser"
+      - "article.node-article"
+
+    article_link_selectors:
+      - "article.node-teaser h2.title a[href^='/node/']"
+      - "article.node-article h2.title a[href^='/node/']"
+      - "h2.title a[href^='/node/']"
+
+    article_url_regex: "^/node/\\d+/?$"
+
+    article_url_excludes:
+      - "?page="
+      - "%2C"
+      - "/taxonomy/term/"
+      - "/user/"
+      - "/sites/"
+      - "?itok="
+      - "/archive/"
+      - "javascript:"
+      - "^#"
+
+    pagination_selectors:
+      - "#post-content ul.pager li.pager-next a"
+      - "#post-content ul.pager li.pager-last a"
+      - "#post-content ul.pager li.pager-item a"
+      - "#post-content ul.pager li.pager-ellipsis a"
+
+    title_selectors:
+      - "h1.page-title"
+      - "meta[property='og:title']"
+      - "title"
+
+    date_selectors:
+      - "span[property='dc:date dc:created']"
+      - "span.submitted time[datetime]"
+      - "span.submitted"
+      - "meta[property='article:published_time']"
 
     author_strategy:
       - "meta_tag"
       - "json_ld_graph"
 
-    rubric_selectors:
-      - "nav a[href*='/node']"
-      - "header a[href*='/node']"
-
-    card_selectors:
-      - "h2.title"
-
-    article_link_selectors:
-      - "h2.title a"
-
-    pagination_selectors:
-      - "li.pager-last a"
-      - "li.pager-next a"
-      - "a[href*='?page=']"
-
-    title_selectors:
-      - "h1.page-title"
-      - "title"
-
-    date_selectors:
-      - "span[property='dc:date dc:created']"
-      - "span.submitted"
-      - "meta[property='article:published_time']"
-
     author_selectors:
-      - "meta[name='Author']"
       - "meta[name='author']"
+      - "meta[name='Author']"
       - "meta[property='article:author']"
 
-    category_selectors: []
+    author_blacklist:
+      - "admin"
+      - "Admin"
+      - "administrator"
+      - "webmaster"
+      - "editor"
 
-    category_strategy: []
+    category_selectors:
+      - "div.field-name-field-tags .field-items a[href^='/taxonomy/term/']"
+      - "div.field-name-field-tags .field-items a"
+
+    category_strategy:
+      - "class_selector"
+      - "url_path_parsing"
 
     content_selectors:
+      - "div.field-name-body div[property='content:encoded']"
       - "div[property='content:encoded']"
-      - "article"
+      - "div.field-name-body .field-item"
 
     remove_selectors:
+      - "div.field-name-field-image"
+      - "div.field-name-field-photo-gallery"
+      - "div.field-name-field-tags"
+      - "footer"
+      - ".statistics_counter"
+      - "#main-menu"
+      - "#sidebar-first"
+      - "#sidebar-second"
+      - "#footer"
       - ".share"
       - ".social"
       - ".banner"
-
-    article_url_filters: []
-
-    article_url_excludes:
-      - "?page="
       
