@@ -137,11 +137,13 @@ sites:
       - "/a/"
     article_url_excludes: []
 
+
+
   # ============================================================
-  # asiaplus.news — Asia-Plus, Tajik edition
+  # asiaplus.news — Asia-Plus, Tajik edition (ULTIMATE FIX)
   # ============================================================
   asiaplus:
-    match: ["asiaplus.news"]
+    match: ["asiaplus.news", "ru.asiaplus.news", "www.asiaplus.news"]
     default_language: tg
     date_locale: "tg"
     start_url: "https://asiaplus.news/tg/hamai-ahbor/"
@@ -158,47 +160,49 @@ sites:
 
     author_selectors:
       - "a.ap-author__link"
-      - "meta[name='twitter:data1']"
 
     content_selectors:
       - "div.ap-content.entry-content"
 
     category_selectors:
       - "meta[property='article:section']"
+      - "dd.ap-single__terms a"
 
+    # МАКСИМАЛЬНО ШИРОКИЙ ПОИСК: ищем все article и все ссылки в них
     card_selectors:
-      - "div.ap-grid--2 article.ap-card"
-      - "div.ap-biggrid article.ap-card"
-      - "div.ap-archive__main article.ap-card"
-
+      - "article"
     article_link_selectors:
-      - "h2.ap-card__title a"
-      - "h3.ap-card__title a"
+      - "a"
 
-    pagination_selectors:
-      - "nav.ap-arch-nav a.next"
-      - "link[rel='next']"
-
-    article_url_regex: "^/tg/\\d{4}/\\d{2}/\\d{2}/[^/]+/?$"
-    article_url_filters:
-      - "/tg/2026/"
-      - "/tg/2025/"
-      - "/tg/2024/"
-      - "/tg/2023/"
+    # Ищем паттерн /tg/2026/10/29/ (работает и для 2008, и для 2026)
+    # Убрали ^ и $, чтобы ловить и полные, и относительные URL
+    article_url_regex: "/tg/\\d{4}/\\d{2}/\\d{2}/[^/]+/"
+    
+    # Исключаем только рубрики и служебные страницы
     article_url_excludes:
       - "/category/"
       - "/author/"
       - "/tag/"
       - "/page/"
+      - "/hamai-ahbor/"
+      - "/homepage-tj/"
+
+    # УБРАЛИ article_url_filters (чтобы не отсекать 2008 год)
+
+    pagination_selectors:
+      - "nav.ap-arch-nav a.next"
+      - "a.next.page-numbers"
 
     category_strategy:
       - meta_tag
+      - class_selector
 
     author_strategy:
       - class_selector
       - meta_tag
       - regex_in_content
-
+      
+      
   # ============================================================
   # khovar.tj — national information agency of Tajikistan
   # ============================================================

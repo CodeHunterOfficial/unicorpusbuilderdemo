@@ -1,27 +1,18 @@
 # tools/_common.py
-"""
-Shared helpers for the tools/ scripts.
-
-Only infrastructure helpers live here. Functions that define the
-reported metric (gold-text extraction, word-level P/R/F1) are
-intentionally kept local to each script so that a reader can audit
-the metric in the same file that prints it.
-"""
+"""Shared helpers for the tools/ scripts."""
 from __future__ import annotations
 
 import os
 import re
 import statistics
+from urllib.parse import urljoin, urlparse
 
+from bs4 import BeautifulSoup
 from datasets import load_dataset
 
 
 WORD_RE = re.compile(r"\w+", re.UNICODE)
 
-
-# ---------------------------------------------------------------------
-# Hugging Face helpers
-# ---------------------------------------------------------------------
 
 def get_token() -> str | None:
     """Return the Hugging Face token from the environment, or None."""
@@ -33,16 +24,7 @@ def get_token() -> str | None:
 
 
 def load_ds(repo: str, token, streaming: bool):
-    """
-    Load a dataset with two fallbacks.
-
-    1. ``verification_mode="no_checks"`` — fixes SplitInfo mismatch when
-       ``dataset_info.json`` disagrees with the actual parquet files.
-    2. Direct parquet loader — fixes schema mismatch or CastError on the
-       same class of datasets.
-
-    If both attempts fail, the exception propagates to the caller.
-    """
+    """Load a dataset with two fallbacks."""
     try:
         return load_dataset(
             repo,
@@ -62,10 +44,6 @@ def load_ds(repo: str, token, streaming: bool):
     )
 
 
-# ---------------------------------------------------------------------
-# Statistics
-# ---------------------------------------------------------------------
-
 def stats_summary(values) -> dict | None:
     """Return n / mean / median / min / max for a list, or None if empty."""
     if not values:
@@ -79,48 +57,86 @@ def stats_summary(values) -> dict | None:
     }
 
 
-# ---------------------------------------------------------------------
-# URL discovery (shared by benchmark_trafilatura and strategy_hitrate)
-# ---------------------------------------------------------------------
-
-def discover_urls_for_site(engine, site_key, site_cfg, limit):
+def discover_urls_for_site(engine, site_key, site_cfg, limit: int) -> list[str]:
     """
-    Return up to ``limit`` article URLs from a single site.
-
-    Order of attempts:
-      1. Parse the site's start page with ``extract_listing_items_stub``.
-      2. Walk rubrics collected by ``engine.collect_rubrics``.
-      3. Try a small set of conventional /category/ and /news/ URLs.
+    Discovers and returns up to ``limit`` article URLs from a given site.
+    
+    Uses the engine's YAML-driven extraction as the primary method, 
+    falling back to a generic BeautifulSoup parser for sites with 
+    absolute URLs or language subdomains (e.g., asiaplus.news).
     """
     match = site_cfg.get("match", [])
     start_url = site_cfg.get("start_url") or (f"https://{match[0]}" if match else None)
     if not start_url:
         return []
 
-    urls, seen = [], set()
+    urls: list[str] = []
+    seen: set[str] = set()
+    
+    excludes = site_cfg.get("article_url_excludes", [])
+    regex_raw = site_cfg.get("article_url_regex", r"/\d{4}/\d{2}/\d{2}/")
+    
+    if isinstance(regex_raw, list) and regex_raw:
+        regex_str = str(regex_raw[0])
+    elif isinstance(regex_raw, str):
+        regex_str = regex_raw
+    else:
+        regex_str = r"/\d{4}/\d{2}/\d{2}/"
 
-    # Step 1: try the start page directly
     try:
-        html = engine.fetch_html(start_url)
-        items = engine.extract_listing_items_stub(html, start_url)
-        for it in items:
-            u = it.get("url")
-            if u and u not in seen:
-                seen.add(u)
-                urls.append(u)
-                if len(urls) >= limit:
-                    return urls
-    except Exception:
-        pass
+        article_re = re.compile(regex_str)
+    except (re.error, TypeError):
+        article_re = re.compile(r"/\d{4}/\d{2}/\d{2}/")
 
-    # Step 2: discover rubric pages
-    rubrics = []
+    def _generic_extract(html: str, base_url: str) -> list[str]:
+        soup = BeautifulSoup(html, "html.parser")
+        found: list[str] = []
+        for a in soup.find_all("a", href=True):
+            full_url = urljoin(base_url, a["href"])
+            path = urlparse(full_url).path
+            if any(ex in path for ex in excludes):
+                continue
+            if article_re.search(path) and full_url not in seen:
+                seen.add(full_url)
+                found.append(full_url)
+        return found
+
+    def _process_page(page_url: str):
+        try:
+            html = engine.fetch_html(page_url)
+        except Exception:
+            return
+        
+        try:
+            items = engine.extract_listing_items_stub(html, page_url)
+            for it in items:
+                u = it.get("url")
+                if u and u not in seen:
+                    seen.add(u)
+                    urls.append(u)
+                    if len(urls) >= limit:
+                        return
+        except Exception:
+            pass
+
+        if len(urls) < limit:
+            for u in _generic_extract(html, page_url):
+                if u not in seen:
+                    seen.add(u)
+                    urls.append(u)
+                    if len(urls) >= limit:
+                        return
+
+    _process_page(start_url)
+    if len(urls) >= limit:
+        return urls
+
+    rubrics: list[str] = []
     try:
         rubrics = engine.collect_rubrics(start_url)
     except Exception:
         rubrics = []
 
-    # Step 3: fall back to conventional URL shapes
     if not rubrics:
         base = start_url.rstrip("/")
         for guess in [
@@ -139,22 +155,6 @@ def discover_urls_for_site(engine, site_key, site_cfg, limit):
     for rubric_url in rubrics:
         if len(urls) >= limit:
             break
-        try:
-            html = engine.fetch_html(rubric_url)
-        except Exception:
-            continue
-
-        try:
-            items = engine.extract_listing_items_stub(html, rubric_url)
-        except Exception:
-            items = []
-
-        for it in items:
-            u = it.get("url")
-            if u and u not in seen:
-                seen.add(u)
-                urls.append(u)
-                if len(urls) >= limit:
-                    break
+        _process_page(rubric_url)
 
     return urls

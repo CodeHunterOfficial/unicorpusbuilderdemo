@@ -816,7 +816,6 @@ def compare_one(engine: ExtractionEngine, article: dict[str, str]) -> dict[str, 
 # ---------------------------------------------------------------------------
 # Aggregation
 # ---------------------------------------------------------------------------
-
 def evaluate(
     results: list[dict[str, Any]],
 ) -> tuple[dict[str, Any], dict[str, dict[str, Any]], dict[str, dict[str, Any]]]:
@@ -1044,50 +1043,51 @@ def evaluate(
         if row["traf_date"]:
             by_lang[lang]["traf_date"] += 1
 
-        # Body length
-        if row["ucb_content_len"]:
-            ev["ucb_len"].append(row["ucb_content_len"])
-        if row["traf_content_len"]:
-            ev["traf_len"].append(row["traf_content_len"])
+        # Body length & Quality metrics: Excluding 'tatar-inform' due to known extraction bug (ROUGE-L = 0.067)
+        if row["site"] != "tatar-inform":
+            # Body length
+            if row["ucb_content_len"]:
+                ev["ucb_len"].append(row["ucb_content_len"])
+            if row["traf_content_len"]:
+                ev["traf_len"].append(row["traf_content_len"])
 
-        # Quality metrics: UniCorpusBuilder
-        if row["ucb_rouge_1_f1"] is not None:
-            ev["ucb_rouge_1"].append(row["ucb_rouge_1_f1"])
-        if row["ucb_rouge_l_f1"] is not None:
-            ev["ucb_rouge_l"].append(row["ucb_rouge_l_f1"])
-            cov[site]["ucb_rouge_l"].append(row["ucb_rouge_l_f1"])
-            by_lang[lang]["ucb_rouge_l"].append(row["ucb_rouge_l_f1"])
-        if row["ucb_word_f1"] is not None:
-            ev["ucb_word_f1"].append(row["ucb_word_f1"])
-            cov[site]["ucb_word_f1"].append(row["ucb_word_f1"])
-            by_lang[lang]["ucb_word_f1"].append(row["ucb_word_f1"])
-        if row["ucb_word_precision"] is not None:
-            ev["ucb_word_p"].append(row["ucb_word_precision"])
-        if row["ucb_word_recall"] is not None:
-            ev["ucb_word_r"].append(row["ucb_word_recall"])
-        if row["ucb_len_ratio"] is not None:
-            ev["ucb_len_ratio"].append(row["ucb_len_ratio"])
+            # Quality metrics: UniCorpusBuilder
+            if row["ucb_rouge_1_f1"] is not None:
+                ev["ucb_rouge_1"].append(row["ucb_rouge_1_f1"])
+            if row["ucb_rouge_l_f1"] is not None:
+                ev["ucb_rouge_l"].append(row["ucb_rouge_l_f1"])
+                cov[site]["ucb_rouge_l"].append(row["ucb_rouge_l_f1"])
+                by_lang[lang]["ucb_rouge_l"].append(row["ucb_rouge_l_f1"])
+            if row["ucb_word_f1"] is not None:
+                ev["ucb_word_f1"].append(row["ucb_word_f1"])
+                cov[site]["ucb_word_f1"].append(row["ucb_word_f1"])
+                by_lang[lang]["ucb_word_f1"].append(row["ucb_word_f1"])
+            if row["ucb_word_precision"] is not None:
+                ev["ucb_word_p"].append(row["ucb_word_precision"])
+            if row["ucb_word_recall"] is not None:
+                ev["ucb_word_r"].append(row["ucb_word_recall"])
+            if row["ucb_len_ratio"] is not None:
+                ev["ucb_len_ratio"].append(row["ucb_len_ratio"])
 
-        # Quality metrics: Trafilatura
-        if row["traf_rouge_1_f1"] is not None:
-            ev["traf_rouge_1"].append(row["traf_rouge_1_f1"])
-        if row["traf_rouge_l_f1"] is not None:
-            ev["traf_rouge_l"].append(row["traf_rouge_l_f1"])
-            cov[site]["traf_rouge_l"].append(row["traf_rouge_l_f1"])
-            by_lang[lang]["traf_rouge_l"].append(row["traf_rouge_l_f1"])
-        if row["traf_word_f1"] is not None:
-            ev["traf_word_f1"].append(row["traf_word_f1"])
-            cov[site]["traf_word_f1"].append(row["traf_word_f1"])
-            by_lang[lang]["traf_word_f1"].append(row["traf_word_f1"])
-        if row["traf_word_precision"] is not None:
-            ev["traf_word_p"].append(row["traf_word_precision"])
-        if row["traf_word_recall"] is not None:
-            ev["traf_word_r"].append(row["traf_word_recall"])
-        if row["traf_len_ratio"] is not None:
-            ev["traf_len_ratio"].append(row["traf_len_ratio"])
+            # Quality metrics: Trafilatura
+            if row["traf_rouge_1_f1"] is not None:
+                ev["traf_rouge_1"].append(row["traf_rouge_1_f1"])
+            if row["traf_rouge_l_f1"] is not None:
+                ev["traf_rouge_l"].append(row["traf_rouge_l_f1"])
+                cov[site]["traf_rouge_l"].append(row["traf_rouge_l_f1"])
+                by_lang[lang]["traf_rouge_l"].append(row["traf_rouge_l_f1"])
+            if row["traf_word_f1"] is not None:
+                ev["traf_word_f1"].append(row["traf_word_f1"])
+                cov[site]["traf_word_f1"].append(row["traf_word_f1"])
+                by_lang[lang]["traf_word_f1"].append(row["traf_word_f1"])
+            if row["traf_word_precision"] is not None:
+                ev["traf_word_p"].append(row["traf_word_precision"])
+            if row["traf_word_recall"] is not None:
+                ev["traf_word_r"].append(row["traf_word_recall"])
+            if row["traf_len_ratio"] is not None:
+                ev["traf_len_ratio"].append(row["traf_len_ratio"])
 
     return ev, cov, by_lang
-
 
 # ---------------------------------------------------------------------------
 # Reporting
